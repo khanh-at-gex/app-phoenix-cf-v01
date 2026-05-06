@@ -120,6 +120,8 @@ with tab_heatmap:
         hm = hm[hm["phan_loai_ben_trong_ben_ngoai"] == noi_ngoai_val]
     if km_val != "Tất cả":
         hm = hm[hm["khoan_muc"] == km_val]
+    else:
+        hm = hm[hm["khoan_muc"].isin(["CFO", "CFI", "CFF"])]
     if sel_units:
         hm = hm[hm["ma_don_vi"].isin(sel_units)]
 
