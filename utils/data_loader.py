@@ -61,32 +61,17 @@ def _run_async(coro):
         return exe.submit(asyncio.run, coro).result()
 
 
-async def _read_sheet_calamine(client, paths: list[str], sheet: str, usecols: str) -> pd.DataFrame:
-    """Download each file and read with calamine engine — handles corrupt xlsm files."""
-    import io as _io
-
-    async def _one(path: str) -> pd.DataFrame | None:
-        try:
-            data = await client.download(item_path=path)
-            df = pd.read_excel(
-                _io.BytesIO(data),
-                sheet_name=sheet,
-                usecols=usecols,
-                skiprows=1,
-                engine="calamine",
-            )
-            df["_source"] = path
-            return df
-        except Exception:
-            return None
-
-    import asyncio as _asyncio
-    results = await _asyncio.gather(*[_one(p) for p in paths])
-    valid = [r for r in results if r is not None and not r.empty]
-    return pd.concat(valid, ignore_index=True, sort=False) if valid else pd.DataFrame()
+_SHEETS = [
+    ("Report",       "A:M", "_report"),
+    ("Key drivers",  "A:J", "_kd"),
+    ("Ratio_commit", "A:J", "_rc"),
+    ("ADL input",    "A:I", "_adl"),
+]
 
 
 async def _fetch_all():
+    import io as _io
+    import asyncio as _asyncio
     from gex_msgraph import GraphClient
 
     client = GraphClient("das_u1")
@@ -105,12 +90,37 @@ async def _fetch_all():
 
     paths = df_list_files[df_list_files["file_path"].notna()]["file_path"].tolist()
 
-    df_report = await _read_sheet_calamine(client, paths, sheet="Report",      usecols="A:M")
-    df_kd     = await _read_sheet_calamine(client, paths, sheet="Key drivers",  usecols="A:J")
-    df_rc     = await _read_sheet_calamine(client, paths, sheet="Ratio_commit", usecols="A:J")
-    df_adl    = await _read_sheet_calamine(client, paths, sheet="ADL input",    usecols="A:I")
+    async def _read_file(path: str) -> dict:
+        """Download once, read all 4 sheets from the same buffer."""
+        try:
+            raw = await client.download(item_path=path)
+            buf = _io.BytesIO(raw)
+            out = {}
+            for sheet, usecols, key in _SHEETS:
+                buf.seek(0)
+                try:
+                    df = pd.read_excel(
+                        buf, sheet_name=sheet, usecols=usecols,
+                        skiprows=1, engine="calamine",
+                    )
+                    df["_source"] = path
+                    out[key] = df
+                except Exception:
+                    out[key] = None
+            return out
+        except Exception:
+            return {key: None for _, _, key in _SHEETS}
 
-    return df_list_files, paths, df_report, df_kd, df_rc, df_adl
+    file_results = await _asyncio.gather(*[_read_file(p) for p in paths])
+
+    def _concat(key: str) -> pd.DataFrame:
+        frames = [r[key] for r in file_results if r.get(key) is not None and not r[key].empty]
+        return pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
+
+    return (
+        df_list_files, paths,
+        _concat("_report"), _concat("_kd"), _concat("_rc"), _concat("_adl"),
+    )
 
 
 def _clean_report(df: pd.DataFrame) -> pd.DataFrame:

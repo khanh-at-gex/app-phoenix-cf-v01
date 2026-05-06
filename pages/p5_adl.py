@@ -104,8 +104,8 @@ with tab1:
                 badges += _badge(str(r["ma_don_vi"]), color)
 
             cell_html = (
-                f'<div style="border:1px solid #333;border-radius:6px;padding:8px;'
-                f'min-height:70px;background:#1e1e1e">'
+                f'<div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px;'
+                f'min-height:70px;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.05)">'
                 f'<div style="font-size:10px;color:{strat_color};font-weight:600;margin-bottom:4px">'
                 f"{strat_text}</div>"
                 f"{badges}"

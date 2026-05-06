@@ -187,7 +187,7 @@ else:
     fig.update_layout(
         barmode="group",
         bargroupgap=0.05,
-        yaxis=dict(title="Số tiền (triệu)"),
+        yaxis=dict(title="Số tiền (đơn vị: triệu VND)"),
         xaxis=dict(
             tickangle=-45,
             rangeslider=dict(visible=True, thickness=0.05),
@@ -226,22 +226,23 @@ if detail_df.empty:
     st.info("Không có dữ liệu với bộ lọc hiện tại.")
 else:
     want = [
-        "code", "khoan_muc", "chi_tieu",
+        "khoan_muc", "code", "chi_tieu",
+        "nam", "quy", "so_tien_tong",
         "phan_loai_on_dinh_khong_on_dinh", "phan_loai_ben_trong_ben_ngoai",
-        "doi_tuong_giao_dich_kinh_te", "so_tien_tong", "nam", "quy",
+        "doi_tuong_giao_dich_kinh_te",
     ]
     show = detail_df[[c for c in want if c in detail_df.columns]].copy()
     show["so_tien_tong"] = show["so_tien_tong"].map(fmt_money)
     show = show.rename(columns={
-        "code": "Code",
         "khoan_muc": "Khoản mục",
+        "code": "Code",
         "chi_tieu": "Chỉ tiêu",
+        "nam": "Năm",
+        "quy": "Quý",
+        "so_tien_tong": "Số tiền (triệu)",
         "phan_loai_on_dinh_khong_on_dinh": "Ổn định",
         "phan_loai_ben_trong_ben_ngoai": "Nội/Ngoại",
         "doi_tuong_giao_dich_kinh_te": "Đối tượng",
-        "so_tien_tong": "Số tiền (triệu)",
-        "nam": "Năm",
-        "quy": "Quý",
     })
     styled = show.style.apply(_color_amount, subset=["Số tiền (triệu)"])
     st.dataframe(styled, use_container_width=True, hide_index=True)
