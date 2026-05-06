@@ -159,7 +159,6 @@ else:
         .sort_values(["nam", "quy"])
     )
     cf_total["period"] = _period_label(cf_total)
-    cf_total["cumsum"] = cf_total["so_tien_tong"].cumsum()
 
     fig = go.Figure()
 
@@ -173,6 +172,7 @@ else:
                 y=km_data["so_tien_tong"],
                 name=km,
                 marker_color=KHOAN_MUC_COLORS[km],
+                marker_opacity=0.85,
             ))
 
     if not cf_total.empty:
@@ -181,24 +181,20 @@ else:
             y=cf_total["so_tien_tong"],
             name="Tổng CF",
             mode="lines+markers",
-            line=dict(color="#e67e22", width=2, dash="dot"),
-        ))
-        fig.add_trace(go.Scatter(
-            x=cf_total["period"],
-            y=cf_total["cumsum"],
-            name="Lũy kế",
-            mode="lines+markers",
-            line=dict(color="#9b59b6", width=2),
-            yaxis="y2",
+            line=dict(color="#e67e22", width=2.5, dash="dot"),
         ))
 
     fig.update_layout(
-        barmode="stack",
+        barmode="group",
+        bargroupgap=0.05,
         yaxis=dict(title="Số tiền (triệu)"),
-        yaxis2=dict(title="Lũy kế (triệu)", overlaying="y", side="right", showgrid=False),
+        xaxis=dict(
+            tickangle=-45,
+            rangeslider=dict(visible=True, thickness=0.05),
+        ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        height=420,
-        margin=dict(l=0, r=0, t=40, b=0),
+        height=520,
+        margin=dict(l=0, r=0, t=40, b=60),
     )
     st.plotly_chart(fig, use_container_width=True)
 

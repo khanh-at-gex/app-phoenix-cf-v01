@@ -1,16 +1,4 @@
-import os
-from pathlib import Path
-
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent / ".env")
-
-# On Streamlit Cloud there is no .env; bridge st.secrets → os.environ
-for _k, _v in st.secrets.items():
-    if isinstance(_v, str):
-        os.environ.setdefault(_k, _v)
-
 from utils.sidebar import init_session_state, render_sidebar
 
 st.set_page_config(
@@ -19,26 +7,22 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Password gate ─────────────────────────────────────────────────────────────
-_APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
-
-if _APP_PASSWORD and not st.session_state.get("authenticated"):
-    st.title("GELEX · CASHPLAN")
-    pwd = st.text_input("Mật khẩu", type="password")
-    if st.button("Đăng nhập"):
-        if pwd == _APP_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Mật khẩu không đúng.")
-    st.stop()
-
-# ── App ───────────────────────────────────────────────────────────────────────
 init_session_state()
 
-with st.sidebar:
-    st.markdown("## GELEX · CASHPLAN")
-    st.markdown("---")
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"]::before {
+    content: "PHOENIX: CASHPLAN Dashboard";
+    display: block;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: Red;
+    padding: 1.2rem 1rem 0.8rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    margin-bottom: 0.5rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 pages = [
     st.Page("pages/p2_tracking.py", title="Theo dõi dữ liệu", icon="📋"),
