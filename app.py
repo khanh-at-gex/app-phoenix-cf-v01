@@ -1,10 +1,15 @@
 import os
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
-from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# On Streamlit Cloud there is no .env; bridge st.secrets → os.environ
+for _k, _v in st.secrets.items():
+    if isinstance(_v, str):
+        os.environ.setdefault(_k, _v)
 
 from utils.sidebar import init_session_state, render_sidebar
 
