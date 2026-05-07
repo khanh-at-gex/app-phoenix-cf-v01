@@ -101,10 +101,13 @@ st.divider()
 st.subheader("Chi tiết đơn vị")
 
 display = df[
-    ["folder_name", "file_name", "ma_don_vi", "ten_don_vi", "group",
-     *_SHEET_COLS, "file_modified", "trang_thai"]
+    ["folder_name", "ma_don_vi", "ten_don_vi",
+     *_SHEET_COLS, "file_modified", "trang_thai", "file_name"]
 ].copy()
-display["file_modified"] = pd.to_datetime(display["file_modified"], errors="coerce").dt.strftime("%Y-%m-%d")
+_ts = pd.to_datetime(display["file_modified"], errors="coerce", utc=True)
+display["file_modified"] = (
+    _ts.dt.tz_convert("Asia/Ho_Chi_Minh").dt.strftime("%Y-%m-%d %H:%M:%S")
+)
 for col in _SHEET_COLS:
     display[col] = display[col].map(_sheet_icon)
 display["trang_thai"] = display["trang_thai"].map({
@@ -115,16 +118,15 @@ display["trang_thai"] = display["trang_thai"].map({
 
 display = display.rename(columns={
     "folder_name":           "Thư mục",
-    "file_name":             "Tên file",
     "ma_don_vi":             "Mã đơn vị",
     "ten_don_vi":            "Tên đơn vị",
-    "group":                 "Group",
     "report_status":         "Report",
     "key_drivers_status":    "Key Drivers",
     "ratio_commit_status":   "Ratio Commit",
     "adl_input_status":      "ADL Input",
     "file_modified":         "Cập nhật",
     "trang_thai":            "Trạng thái",
+    "file_name":             "Tên file",
 })
 
 status_cols = ["Report", "Key Drivers", "Ratio Commit", "ADL Input"]
