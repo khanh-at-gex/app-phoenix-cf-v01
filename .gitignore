@@ -12,7 +12,11 @@ venv/
 env/
 
 .ipynb_checkpoints/
-test_load.py
+
+# Editor / tooling
+.claude/
+.streamlit/secrets.toml
+.streamlit_run.log
 
 # OS
 .DS_Store

@@ -1,5 +1,18 @@
+import os
+
 import streamlit as st
-from utils.sidebar import init_session_state, render_sidebar
+
+# Bridge st.secrets -> os.environ so the same os.environ.get(...) calls work
+# locally (.env via python-dotenv) and on Streamlit Cloud (st.secrets).
+# Must run BEFORE any util imports that read env vars.
+try:
+    for _k, _v in st.secrets.items():
+        if _k not in os.environ:
+            os.environ[_k] = str(_v)
+except Exception:
+    pass
+
+from utils.sidebar import init_session_state, render_sidebar  # noqa: E402
 
 st.set_page_config(
     page_title="GELEX · CASHPLAN",

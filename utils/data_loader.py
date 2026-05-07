@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import io
 import os
 import re
 from pathlib import Path
@@ -8,7 +9,7 @@ import msal
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from gex_msgraph import _core as _gex_core
+from gex_msgraph import GraphClient, _core as _gex_core
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -53,8 +54,6 @@ _gex_core._TokenProvider = _ConfidentialTokenProvider
 
 # ─────────────────────────────────────────────────────────────────────────────
 
-ROOT_DIR = os.environ["ROOT_DIR"]
-
 
 def _run_async(coro):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exe:
@@ -70,14 +69,16 @@ _SHEETS = [
 
 
 async def _fetch_all():
-    import io as _io
-    import asyncio as _asyncio
-    from gex_msgraph import GraphClient
+    root_dir = os.environ.get("ROOT_DIR")
+    if not root_dir:
+        raise RuntimeError(
+            "ROOT_DIR is not set. Add it to .env (local) or Streamlit secrets (deploy)."
+        )
 
     client = GraphClient("das_u1")
 
-    items = await client.list_files(ROOT_DIR)
-    xlsx_files = await client.walk(ROOT_DIR, pattern="*.xls*")
+    items = await client.list_files(root_dir)
+    xlsx_files = await client.walk(root_dir, pattern="*.xls*")
 
     df_folders = pd.DataFrame(items)[["name", "path"]].rename(
         columns={"name": "folder_name", "path": "folder_path"}
@@ -94,7 +95,7 @@ async def _fetch_all():
         """Download once, read all 4 sheets from the same buffer."""
         try:
             raw = await client.download(item_path=path)
-            buf = _io.BytesIO(raw)
+            buf = io.BytesIO(raw)
             out = {}
             for sheet, usecols, key in _SHEETS:
                 buf.seek(0)
@@ -111,7 +112,7 @@ async def _fetch_all():
         except Exception:
             return {key: None for _, _, key in _SHEETS}
 
-    file_results = await _asyncio.gather(*[_read_file(p) for p in paths])
+    file_results = await asyncio.gather(*[_read_file(p) for p in paths])
 
     def _concat(key: str) -> pd.DataFrame:
         frames = [r[key] for r in file_results if r.get(key) is not None and not r[key].empty]
