@@ -15,7 +15,7 @@ from utils.breakdown_chart import (
 )
 from utils.ui import chart_height_slider
 
-_N_PER_ROW = 2
+_N_PER_ROW = 3
 _DEFAULT_PANEL_UNITS = ["GELEX", "GEE", "GEL"]
 
 
