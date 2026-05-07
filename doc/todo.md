@@ -102,6 +102,17 @@ Update this file at the end of every AI session.
 - [ ] Wire `doc/ownership.csv` vào `data_loader.py` cho consolidation
 - [ ] P3 Bar default `_DEFAULT_PANEL_UNITS` thay từ hardcode `["GELEX", "GEE", "GEL"]` sang query `companies.type.isin(["HOLDING", "SUB_HOLDING"])`
 
+## Refactor pass 3 (2026-05-08)
+
+- [x] P3 Sankey: VAS-correct arrow direction (swap source/target by `sign(so_tien_tong)`); annotations giá trị trên link với fixed node positions; node labels include tổng inflow
+- [x] P3 Sankey row 2: filter Đơn vị (`ma_don_vi`) + Đối tác (`doi_tuong`) → company-centric view (xem cả Thu/Chi của 1 DN)
+- [x] Loại giao dịch → multiselect cho cả 3 tab Sankey/Heatmap/Bar (đã đồng bộ với multiselect Heatmap có sẵn)
+- [x] `fmt_money_short`: cap tại B (tỷ), không dùng T. ≥100B → integer, 1B-100B → 1 decimal
+- [x] **New tab "Tổng hợp dòng tiền"** ([utils/p3_total.py](../utils/p3_total.py)): single panel sum-across + Tổng CF line (primary Y) + Lũy kế line (secondary Y, toggleable)
+- [x] Extract [utils/p3_filter_controls.py](../utils/p3_filter_controls.py) — shared 2-row controls + filter logic. P3 Bar và P3 Total dùng chung, save ~80 lines duplicate
+- [x] Đổi P3 Bar wrap từ 2/row → **3/row** (default 3 panels GELEX/GEE/GEL khít 1 hàng)
+- [x] P2: cột "Tên file" cuối bảng, bỏ cột "Group", `Cập nhật` format `YYYY-MM-DD HH:MM:SS` GMT+7
+
 ---
 
 ## Pending

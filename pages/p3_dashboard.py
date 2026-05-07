@@ -16,6 +16,7 @@ from utils.p3_bar import render as render_bar
 from utils.p3_cumul import render as render_cumul
 from utils.p3_heatmap import render as render_heatmap
 from utils.p3_sankey import render as render_sankey
+from utils.p3_total import render as render_total
 
 st.header("Dashboard chiến lược")
 
@@ -38,11 +39,11 @@ ordered_labels, label_to_unit = build_unit_label_list(
     df_summary, units=set(base["ma_don_vi"].dropna().unique())
 )
 
-# Tab order matches requirements.md §3 P3
-tab_sankey, tab_heatmap, tab_bar, tab_cumul = st.tabs([
+tab_sankey, tab_heatmap, tab_bar, tab_total, tab_cumul = st.tabs([
     "Sankey dòng tiền nội bộ",
     "Heatmap Dòng tiền từng CT",
     "Biểu đồ phân rã dòng tiền",
+    "Tổng hợp dòng tiền",
     "Tích lũy dư tiền",
 ])
 
@@ -59,6 +60,12 @@ with tab_heatmap:
 
 with tab_bar:
     render_bar(
+        df_report=df_report, base=base,
+        ordered_labels=ordered_labels, label_to_unit=label_to_unit,
+    )
+
+with tab_total:
+    render_total(
         df_report=df_report, base=base,
         ordered_labels=ordered_labels, label_to_unit=label_to_unit,
     )
