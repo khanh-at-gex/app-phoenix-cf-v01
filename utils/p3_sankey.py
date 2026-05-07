@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.charts import GEE_COLOR, GEL_COLOR
+from utils.charts import GEE_COLOR, GEL_COLOR, fmt_money_short
 from utils.ui import chart_height_slider
 
 _SANKEY_FONT = dict(
@@ -145,21 +145,33 @@ def render(
     tgt = targets.map(node_idx).tolist()
     val = agg["so_tien_tong"].abs().tolist()
     lcolor = [_COLOR_POS if v > 0 else _COLOR_NEG for v in agg["so_tien_tong"]]
+    link_labels = [fmt_money_short(v) for v in val]
+
+    # Append total inflow vào node label để node lớn nhìn rõ giá trị
+    node_in_total: dict[str, float] = {}
+    for n_label, v in zip(targets, val):
+        node_in_total[n_label] = node_in_total.get(n_label, 0.0) + v
+    node_labels_with_value = [
+        f"{n} ({fmt_money_short(node_in_total[n])})" if n in node_in_total else n
+        for n in all_nodes
+    ]
 
     n_nodes = len(all_nodes)
     fig = go.Figure(go.Sankey(
         arrangement="snap",
         node=dict(
-            label=all_nodes, color=node_color,
+            label=node_labels_with_value, color=node_color,
             pad=14, thickness=18,
             line=dict(color="rgba(255,255,255,0.6)", width=0.5),
             hovertemplate="%{label}<extra></extra>",
         ),
         link=dict(
-            source=src, target=tgt, value=val, color=lcolor, arrowlen=25,
+            source=src, target=tgt, value=val,
+            label=link_labels,
+            color=lcolor, arrowlen=25,
             hovertemplate=(
                 "<b>%{source.label} → %{target.label}</b><br>"
-                "Giá trị: %{value:,.0f} triệu<extra></extra>"
+                "Giá trị: %{value:,.0f} triệu (%{label})<extra></extra>"
             ),
         ),
         textfont=_SANKEY_FONT,

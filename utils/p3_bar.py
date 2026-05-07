@@ -46,7 +46,7 @@ def render(
 
     # ── Data filter row ────────────────────────────────────────────────────
     st.caption("Bộ lọc dữ liệu")
-    f1, f2, f3, f4 = st.columns(4)
+    f1, f2, f3, f4, f5 = st.columns([3, 2, 2, 2, 3])
     with f1:
         # Default panels: HOLDING + SUB_HOLDING (consolidated files)
         # TODO: thay bằng companies.csv type lookup khi wire xong
@@ -76,6 +76,18 @@ def render(
             default="Tất cả", key="p3_bar_noi_ngoai",
         ) or "Tất cả"
 
+    # Loại giao dịch options phụ thuộc vào Khoản mục đang chọn
+    if bar_km != "Tất cả":
+        ct_scope = base[base["khoan_muc"] == bar_km]
+    else:
+        ct_scope = base[base["khoan_muc"].isin(["CFO", "CFI", "CFF"])]
+    ct_opts = sorted(ct_scope["chi_tieu"].dropna().unique().tolist())
+
+    with f5:
+        bar_chi_tieu = st.selectbox(
+            "Loại giao dịch", ["Tất cả"] + ct_opts, key="p3_bar_chi_tieu",
+        )
+
     # ── Apply filters ───────────────────────────────────────────────────────
     bar = base.copy()
     if bar_km != "Tất cả":
@@ -88,6 +100,8 @@ def render(
         bar = bar[bar["phan_loai_on_dinh_khong_on_dinh"] == bar_on_dinh]
     if bar_noi_ngoai != "Tất cả":
         bar = bar[bar["phan_loai_ben_trong_ben_ngoai"] == bar_noi_ngoai]
+    if bar_chi_tieu != "Tất cả":
+        bar = bar[bar["chi_tieu"] == bar_chi_tieu]
 
     # Period mode
     if bar_period == "Quý":

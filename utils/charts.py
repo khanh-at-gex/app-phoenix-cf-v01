@@ -36,13 +36,19 @@ def fmt_money(v) -> str:
 
 
 def fmt_money_short(v) -> str:
-    """Shorthand: ≥1,000,000 → T, ≥1,000 → B. Use in chart annotations / KPIs."""
+    """
+    Shorthand cho chart annotations / KPI cards. Đơn vị input = triệu VNĐ.
+    Luôn dùng tối đa "B" (tỷ = 1,000 triệu) — không dùng "T".
+    - ≥ 100B → integer with thousands separator: "2,500B"
+    - 1B – 100B → 1 decimal: "21.5B"
+    - < 1B → raw triệu: "500"
+    """
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return "—"
     v = float(v)
     a = abs(v)
-    if a >= 1_000_000:
-        return f"{v / 1_000_000:.1f}T"
+    if a >= 100_000:
+        return f"{v / 1_000:,.0f}B"
     if a >= 1_000:
-        return f"{v / 1_000:.0f}B"
+        return f"{v / 1_000:.1f}B"
     return f"{v:.0f}"
