@@ -101,7 +101,7 @@ st.divider()
 st.subheader("Chi tiết đơn vị")
 
 display = df[
-    ["folder_name", "ma_don_vi", "ten_don_vi", "group",
+    ["folder_name", "file_name", "ma_don_vi", "ten_don_vi", "group",
      *_SHEET_COLS, "file_modified", "trang_thai"]
 ].copy()
 display["file_modified"] = pd.to_datetime(display["file_modified"], errors="coerce").dt.strftime("%Y-%m-%d")
@@ -115,6 +115,7 @@ display["trang_thai"] = display["trang_thai"].map({
 
 display = display.rename(columns={
     "folder_name":           "Thư mục",
+    "file_name":             "Tên file",
     "ma_don_vi":             "Mã đơn vị",
     "ten_don_vi":            "Tên đơn vị",
     "group":                 "Group",

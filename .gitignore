@@ -4,6 +4,9 @@
 *.xls
 *.xlsm
 
+# Registry / config CSVs in doc/ are version-controlled
+!doc/*.csv
+
 __pycache__/
 *.py[cod]
 .venv/
