@@ -83,6 +83,25 @@ Update this file at the end of every AI session.
 - [x] Refactor p2/p3/p4/p5 to use the new utils (drop duplicated folder-order, group-map, period-label, badge code)
 - [x] Move `test_load.py` → `tests/test_load.py`; replace hardcoded `d:\...` path with `Path(__file__).parent.parent`
 
+## Refactor pass 2 (2026-05-07)
+
+- [x] Add `companies.csv` + `ownership.csv` registries (placeholder values, finance team to fill)
+- [x] Add P2 detail table column "Tên file"
+- [x] Sankey logic rewrite: source = `ma_don_vi`, target = `doi_tuong_giao_dich_kinh_te`; arrow direction theo VAS sign; "Loại dòng" Thu/Chi/Tất cả filter; Khoản mục → Loại giao dịch dependency; reorder 7 filter cột
+- [x] Heatmap: thêm "Show theo" Năm/Quý filter; "Đơn vị" filter đầu; "Loại giao dịch" depend on Khoản mục
+- [x] P3 Bar tab "Biểu đồ phân rã dòng tiền": multi-select đơn vị (mỗi đơn vị = 1 panel); 2-level breakdown (CFO/CFI/CFF × Ổn định-Bên trong); outer-end Net labels; Trục Y Riêng/Chung; bỏ "Loại biểu đồ" toggle, bỏ "Tổng" line
+- [x] Height slider 400-800 cho tất cả chart P3 + P4
+- [x] Sankey border container + font Inter
+- [x] P4 "Dòng tiền theo thời gian" đồng bộ với P3 phân rã (cùng 3 cột CFO/CFI/CFF + 2-level breakdown)
+- [x] Phase A — Extract shared chart logic: `utils/breakdown_chart.py`, `chart_height_slider()`
+- [x] Phase B — Split P3: `utils/p3_sankey.py`, `utils/p3_heatmap.py`, `utils/p3_bar.py`, `utils/p3_cumul.py`. `pages/p3_dashboard.py` còn 67 lines (orchestrator)
+- [x] Phase C — Update REPO.md, ISSUES.md (#9, #10), todo.md
+
+### TODO — phase D (defer cho đến khi finance team confirm số ownership)
+- [ ] Wire `doc/companies.csv` vào `data_loader.py` (replace `_folder_group()` heuristic)
+- [ ] Wire `doc/ownership.csv` vào `data_loader.py` cho consolidation
+- [ ] P3 Bar default `_DEFAULT_PANEL_UNITS` thay từ hardcode `["GELEX", "GEE", "GEL"]` sang query `companies.type.isin(["HOLDING", "SUB_HOLDING"])`
+
 ---
 
 ## Pending

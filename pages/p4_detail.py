@@ -2,7 +2,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.charts import GROUP_COLORS, KHOAN_MUC_COLORS, fmt_money
+from utils.breakdown_chart import (
+    BREAKDOWN_OPTIONS,
+    add_breakdown_panel,
+    compute_label_y_offset,
+    compute_periods,
+    resolve_breakdown,
+)
+from utils.charts import GROUP_COLORS, fmt_money
 from utils.data_loader import load_data
 from utils.filters import (
     apply_global_filters,
@@ -10,6 +17,7 @@ from utils.filters import (
     get_global_filters,
     period_label,
 )
+from utils.ui import chart_height_slider
 
 st.header("Chi tiết CTTV")
 
@@ -100,56 +108,64 @@ if not unit_sum.empty:
 
 st.divider()
 
-# ── Chart: stacked bars CFO/CFI/CFF + Tổng CF ───────────────────────────────
+# ── Chart: 3 cột CFO/CFI/CFF mỗi period, optional 2-level stacked ────────────
 st.subheader("Dòng tiền theo thời gian")
 
+st.caption("Tùy chọn biểu đồ")
+ts_g1, ts_g2 = st.columns([3, 2])
+with ts_g1:
+    p4_bar_stack = st.segmented_control(
+        "Cách phân rã theo", BREAKDOWN_OPTIONS,
+        default="Không phân rã", key="p4_bar_stack",
+    ) or "Không phân rã"
+with ts_g2:
+    p4_bar_period = st.segmented_control(
+        "Kỳ", ["Năm", "Quý"], default="Quý", key="p4_bar_period",
+    ) or "Quý"
+
 filtered = apply_global_filters(unit_df, nam_list, quy_list)
-chart_base = filtered[filtered["quy"].notna()]
+if p4_bar_period == "Quý":
+    chart_base = filtered[filtered["quy"].notna()].copy()
+else:
+    chart_base = filtered.copy()
+
+km_filter = selected_khoan_muc or ["CFO", "CFI", "CFF"]
+chart_base = chart_base[chart_base["khoan_muc"].isin(km_filter)]
 
 if chart_base.empty:
-    st.info("Không có dữ liệu phân kỳ theo quý cho đơn vị này.")
+    st.info("Không có dữ liệu cho đơn vị này.")
 else:
-    km_filter = selected_khoan_muc or ["CFO", "CFI", "CFF"]
-
-    cf_detail = (
-        chart_base[chart_base["khoan_muc"].isin(km_filter)]
-        .groupby(["nam", "quy", "khoan_muc"])["so_tien_tong"]
-        .sum().reset_index().sort_values(["nam", "quy"])
+    chart_base, periods_sorted, x_numeric = compute_periods(chart_base, p4_bar_period)
+    is_breakdown, stack_col, cat_list, opacity_map = resolve_breakdown(p4_bar_stack, chart_base)
+    label_y_offset = compute_label_y_offset(
+        chart_base, is_breakdown, stack_col, cat_list, km_filter,
     )
-    cf_detail["period"] = period_label(cf_detail)
-
-    cf_total = (
-        chart_base[chart_base["khoan_muc"].isin(km_filter)]
-        .groupby(["nam", "quy"])["so_tien_tong"]
-        .sum().reset_index().sort_values(["nam", "quy"])
-    )
-    cf_total["period"] = period_label(cf_total)
 
     fig = go.Figure()
-    for km in ["CFO", "CFI", "CFF"]:
-        if km not in km_filter:
-            continue
-        seg = cf_detail[cf_detail["khoan_muc"] == km]
-        if seg.empty:
-            continue
-        fig.add_trace(go.Bar(
-            x=seg["period"], y=seg["so_tien_tong"], name=km,
-            marker_color=KHOAN_MUC_COLORS[km], marker_opacity=0.85,
-        ))
-    if not cf_total.empty:
-        fig.add_trace(go.Scatter(
-            x=cf_total["period"], y=cf_total["so_tien_tong"],
-            name="Tổng CF", mode="lines+markers",
-            line=dict(color="#e67e22", width=2.5, dash="dot"),
-        ))
-
-    fig.update_layout(
-        barmode="group", bargroupgap=0.05,
-        yaxis=dict(title="Số tiền (đơn vị: triệu VND)"),
-        xaxis=dict(tickangle=-45, rangeslider=dict(visible=True, thickness=0.05)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        height=520, margin=dict(l=0, r=0, t=40, b=60),
+    shown_legend: set = set()
+    add_breakdown_panel(
+        fig, chart_base,
+        panel_label=ten_don_vi,
+        periods_sorted=periods_sorted, x_numeric=x_numeric,
+        is_breakdown=is_breakdown, stack_col=stack_col,
+        cat_list=cat_list, opacity_map=opacity_map,
+        label_y_offset=label_y_offset,
+        km_filter=km_filter, shown_legend=shown_legend,
     )
+
+    ts_height = chart_height_slider("p4_ts_height", default=520, min_v=300, max_v=800)
+    fig.update_layout(
+        barmode="stack",
+        legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
+        height=ts_height,
+        margin=dict(l=0, r=0, t=80, b=40),
+        font=dict(size=11),
+    )
+    fig.update_xaxes(
+        tickmode="array", tickvals=x_numeric,
+        ticktext=periods_sorted, tickangle=-45,
+    )
+    fig.update_yaxes(title_text="triệu VNĐ", title_font=dict(size=10))
     st.plotly_chart(fig, use_container_width=True, key="p4_timeseries")
 
 st.divider()
@@ -236,6 +252,9 @@ else:
     if not commitments:
         st.info("Không có dữ liệu Covenant cho kỳ đã chọn.")
     else:
+        cov_height = chart_height_slider(
+            "p4_cov_height", default=300, min_v=200, max_v=800,
+        )
         tabs = st.tabs([str(c) for c in commitments])
         for tab_i, (tab, commit) in enumerate(zip(tabs, commitments)):
             with tab:
@@ -266,7 +285,7 @@ else:
                         annotation_text=f"Cam kết: {threshold:,.2f}",
                     )
                 fig.update_layout(
-                    height=300, margin=dict(l=0, r=0, t=30, b=0), showlegend=True,
+                    height=cov_height, margin=dict(l=0, r=0, t=30, b=0), showlegend=True,
                 )
                 st.plotly_chart(fig, use_container_width=True, key=f"p4_covenant_{tab_i}")
 

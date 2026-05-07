@@ -92,3 +92,35 @@ Fields: Date · File(s) · Symptom · Root cause · Fix applied · Watch for
 **Symptom:** Same logic re-implemented in multiple pages: folder-numbered ordered unit dropdown (p3 + p4), `ma_don_vi → group` lookup (p3 + p4 + p5), `_badge()` HTML helper (p2 + p5), period-label string concat (p3 + p4), global filter session-state reads (every page).  
 **Fix:** Extracted to `utils/filters.py` (`get_global_filters`, `unit_group_map`, `build_unit_label_list`, `period_label`, `apply_global_filters`) and `utils/ui.py` (`badge`). All four pages refactored to import.  
 **Watch for:** Per CLAUDE.md §3, when two pages need the same filter or helper, extract to `utils/` immediately — don't let it duplicate across pages.
+
+---
+
+## #9 — Plotly Scatter `offsetgroup` không làm việc trên categorical x
+
+**Date:** 2026-05-07  
+**File:** `utils/breakdown_chart.py`, `utils/p3_bar.py`, `pages/p4_detail.py`  
+**Symptom:** Khi thêm Net dot/label trên Bar chart (P3 Tab 3 Biểu đồ phân rã + P4 Dòng tiền), label không align với cột Khoản mục — tất cả đều rơi vào giữa period (CFI column). Đặt `offsetgroup=km` trên `go.Scatter` không có hiệu lực; nếu pass numeric x với `xaxis.type="category"` thì numeric value bị treat là category mới và xuất hiện dưới dạng tick mới ("0.267", "1.267"...).  
+**Root cause:** Plotly `go.Scatter` không support `offsetgroup` trên categorical xaxis. Numeric x trên category axis được coi là category mới chứ không nội suy giữa các index.  
+**Fix:** Workaround chuyển toàn bộ x trên chart sang numeric:
+- Bars: `x=list(range(len(periods_sorted)))` thay vì `x=periods_sorted`. Plotly auto-spread offsetgroups quanh numeric x.
+- Labels: `x=[i + KM_OFFSET[km] for i in ...]` với `KM_OFFSET = {"CFO": -0.267, "CFI": 0, "CFF": +0.267}` (default bargap=0.2 → mỗi offsetgroup chiếm 0.267 width).
+- xaxis: `tickmode="array"`, `tickvals=x_numeric`, `ticktext=periods_sorted` để hiển thị tên period (vd. "2026").
+
+**Watch for:** Khi thêm chart bar mới có nhiều offsetgroup + cần dot/label trên đỉnh từng cột — phải dùng numeric x. Bar trace truyền `customdata=periods_sorted` để hover hiển thị tên thực thay vì index.
+
+---
+
+## #10 — Sankey arrow direction sai chiều với VAS sign convention
+
+**Date:** 2026-05-07  
+**File:** `utils/p3_sankey.py`  
+**Symptom:** Mũi tên Sankey luôn đi `ma_don_vi → doi_tuong_giao_dich_kinh_te` (source = đơn vị báo cáo, target = counterparty). User báo "mũi tên ngược" — vì với `so_tien_tong > 0` (Thu, CTTV nhận tiền) tiền chảy thực sự từ counterparty VÀO CTTV, không phải ngược lại.  
+**Root cause:** Code đặt source = ma_don_vi cố định, không xét dấu `so_tien_tong`. Vô tình hiển thị hướng "báo cáo" (CTTV báo cáo về một counterparty) thay vì "hướng tiền chảy thật".  
+**Fix:** Theo VAS confirmed bởi user: `so_tien_tong > 0` = thu (CTTV nhận); `< 0` = chi (CTTV trả). Trước khi build Sankey, swap source/target theo dấu:
+```python
+agg["_src"] = doi_tuong if so_tien_tong > 0 else ma_don_vi  # sender
+agg["_tgt"] = ma_don_vi if so_tien_tong > 0 else doi_tuong  # receiver
+```
+Color: xanh nếu `> 0` (Thu), đỏ nếu `< 0` (Chi). Caption: "Mũi tên = hướng tiền chảy thật".
+
+**Watch for:** Mọi viz dòng tiền (Sankey, flow diagram) phải tôn trọng dấu `so_tien_tong` để hiển thị đúng hướng chảy. Không chỉ đảo dấu — còn phải swap source/target. Đây là quy ước VAS và đã confirm với user.

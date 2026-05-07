@@ -51,7 +51,16 @@ data_etl/
 │   ├── sidebar.py            # Global sidebar filters + session state init
 │   ├── charts.py             # Shared color constants + fmt_money / fmt_money_short
 │   ├── filters.py            # get_global_filters, unit_group_map, build_unit_label_list, period_label
-│   └── ui.py                 # badge() HTML helper
+│   ├── ui.py                 # badge() HTML, chart_height_slider()
+│   ├── breakdown_chart.py    # Shared 3-cột-CFO/CFI/CFF chart builder (P3 Tab 3 + P4 Dòng tiền)
+│   ├── p3_sankey.py          # P3 Tab 1 — Sankey
+│   ├── p3_heatmap.py         # P3 Tab 2 — Heatmap
+│   ├── p3_bar.py             # P3 Tab 3 — Biểu đồ phân rã
+│   └── p3_cumul.py           # P3 Tab 4 — Tích lũy (placeholder)
+│
+├── doc/
+│   ├── companies.csv         # Registry: ma_don_vi, ten_don_vi, type, group, folder
+│   └── ownership.csv         # Graph: parent → child + ownership_pct + method
 │
 ├── tests/
 │   └── test_load.py          # Standalone data pipeline smoke test
@@ -149,10 +158,25 @@ Status values: `"success"` | `"missing_sheet"` | `NaN` (no file)
 - Reads: `df_summary`
 
 ### P3 — Dashboard chiến lược 🔶 PARTIAL (3/4 tabs)
-- **Tab 1 — Sankey nội bộ CF36** ✅: 3-level Plotly Sankey (CTTV → GEE/GEL → GELEX) with 6 in-tab filters
-- **Tab 2 — Heatmap Net CF** ✅: units × periods colored by net CF; in-tab filters (on_dinh, noi_ngoai, khoan_muc, unit, chi_tieu); folder-ordered rows
-- **Tab 3 — Biểu đồ cột** ✅ (extension beyond requirements.md): 3-panel grouped/stacked bar (GEX/GEE/GEL) with 7 controls — period, stack-by, mode, group, khoan_muc, on_dinh, noi_ngoai
-- **Tab 4 — Tích lũy dư tiền** ❌ not built (placeholder)
+Orchestrator [pages/p3_dashboard.py](../pages/p3_dashboard.py) chỉ load data + dispatch sang `utils/p3_*.py`.
+
+- **Tab 1 — Sankey dòng tiền nội bộ** ✅ ([utils/p3_sankey.py](../utils/p3_sankey.py)):
+  - Mỗi link = 1 cặp `(ma_don_vi, doi_tuong_giao_dich_kinh_te)`, value = `|sum(so_tien_tong)|`
+  - **VAS sign convention**: dấu `so_tien_tong` quyết định hướng arrow (Thu = counterparty → CTTV; Chi = CTTV → counterparty). Xem ISSUES #10
+  - 7 filter: Năm · Quý · Loại dòng (Thu/Chi/Tất cả, default Thu) · Phân loại ổn định · Phân loại Nội/Ngoại (default Bên trong) · Khoản mục · Loại giao dịch (options thay đổi theo Khoản mục)
+  - Border container, height slider 400-800
+  - Expander "🔍 Xem dữ liệu gốc" hiện 2 tab Raw rows + Aggregated pairs
+- **Tab 2 — Heatmap Dòng tiền từng CT** ✅ ([utils/p3_heatmap.py](../utils/p3_heatmap.py)):
+  - Units × periods colored by net CF, dynamic colorbar ticks
+  - 6 filter: Đơn vị · Show theo (Năm/Quý, default Năm) · Phân loại ổn định · Nội/Ngoại · Khoản mục · Loại giao dịch (depend on Khoản mục)
+  - Folder-ordered rows, height slider 300-800
+- **Tab 3 — Biểu đồ phân rã dòng tiền** ✅ ([utils/p3_bar.py](../utils/p3_bar.py)):
+  - Mỗi đơn vị được chọn = 1 panel chart (multi-select). Mỗi period có 3 cột CFO/CFI/CFF cạnh nhau (offsetgroup); optional 2-level stack theo Ổn định/KOĐ hoặc Bên trong/Ngoài
+  - "Cách phân rã theo": Không phân rã / Bên trong-Bên ngoài / Ổn định-KOĐ
+  - "Kỳ" Năm/Quý · "Trục Y" Riêng/Chung
+  - Số Net hiển thị ở đầu mút ngoài cột (font Arial Black, màu Khoản mục)
+  - 2 panel/row, wrap xuống dòng từ panel thứ 3, height slider 400-800
+- **Tab 4 — Tích lũy dư tiền** ❌ placeholder
 - KPI row (4 cards above tabs) ❌ not built
 - Reads: `df_report`, `df_summary`
 
@@ -201,6 +225,20 @@ Cross-page logic lives in `utils/`:
 - `utils/filters.py` — `get_global_filters()`, `unit_group_map()`, `build_unit_label_list()`, `period_label()`, `apply_global_filters()`. Every page uses these instead of re-implementing locally.
 - `utils/ui.py` — `badge(text, color)` HTML helper for chip-style badges.
 - `utils/charts.py` — color constants (GEE/GEL/STATUS/KHOAN_MUC), `HEATMAP_COLORSCALE`, and two formatters: `fmt_money()` (2-decimal, for tables) and `fmt_money_short()` (B/T shorthand, for chart annotations and KPI cards).
+
+### Plotly Scatter offsetgroup workaround (numeric x)
+`go.Scatter` không support `offsetgroup` trên `xaxis.type="category"` — Plotly treat numeric x là category mới. Workaround dùng trong P3 Tab 3 + P4 Dòng tiền:
+- Convert period x sang numeric index `0, 1, 2, ...`
+- Dot/label x = `index + KM_OFFSET[km]` (CFO=−0.267, CFI=0, CFF=+0.267 ứng với bargap=0.2)
+- xaxis: `tickmode="array"`, `tickvals=x_numeric`, `ticktext=periods_sorted`
+
+Bars cũng dùng numeric x để Plotly bargroup auto-spread. Xem ISSUES #9.
+
+### Sankey VAS sign convention
+P3 Tab Sankey: hướng mũi tên đi theo HƯỚNG TIỀN CHẢY THẬT, không phải hướng báo cáo. Theo VAS: `so_tien_tong > 0` = thu (CTTV nhận), `< 0` = chi (CTTV trả). Source/target được swap theo dấu trước khi build Sankey. Xem ISSUES #10.
+
+### Shared breakdown chart logic
+P3 Tab 3 và P4 "Dòng tiền theo thời gian" có cùng pattern (3 cột CFO/CFI/CFF/period + optional Level 2 stack + outer-end labels). Logic chung trong [utils/breakdown_chart.py](../utils/breakdown_chart.py): `BREAKDOWN_OPTIONS`, `KM_OFFSET`, `STACK_COL`, `CAT_ORDER`, `compute_periods()`, `resolve_breakdown()`, `compute_label_y_offset()`, `add_breakdown_panel()`.
 
 ### Lazy ROOT_DIR
 `utils/data_loader.py` does NOT read `ROOT_DIR` at import time. It reads inside `_fetch_all()` via `os.environ.get("ROOT_DIR")` and raises a clear `RuntimeError` if missing. This avoids import-time crashes when the env var hasn't been bridged from `st.secrets` yet.
