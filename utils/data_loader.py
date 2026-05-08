@@ -64,7 +64,7 @@ _SHEETS = [
     ("Report",       "A:M", "_report"),
     ("Key drivers",  "A:J", "_kd"),
     ("Ratio_commit", "A:J", "_rc"),
-    ("ADL input",    "A:I", "_adl"),
+    ("ADL_input",    "A:I", "_adl"),
 ]
 
 
