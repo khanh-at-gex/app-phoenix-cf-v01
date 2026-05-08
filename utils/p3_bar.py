@@ -67,8 +67,8 @@ def render(
         rows=n_rows, cols=_N_PER_ROW,
         shared_yaxes=(state.yaxis_mode == "Chung"),
         subplot_titles=titles,
-        horizontal_spacing=0.08,
-        vertical_spacing=0.18 if n_rows > 1 else 0.0,
+        horizontal_spacing=0.03,
+        vertical_spacing=0.12 if n_rows > 1 else 0.0,
     )
 
     bar_font_scale = chart_font_scale("p3_bar_font")
@@ -125,27 +125,42 @@ def render(
     )
     base_font = max(8, int(11 * bar_font_scale))
     axis_title_font = max(7, int(10 * bar_font_scale))
+    panel_title_font = max(13, int(16 * bar_font_scale))
     fig.update_layout(
         barmode="stack",
         legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
         height=bar_height,
-        margin=dict(l=0, r=0, t=80, b=40),
+        margin=dict(l=0, r=0, t=90, b=40),
         font=dict(size=base_font),
+    )
+    # Subplot titles bigger + lifted up
+    fig.update_annotations(
+        font=dict(size=panel_title_font, color="#1a1a1a", family="Arial Black"),
+        yshift=14,
+    )
+    # Subplot frame (viền 4 cạnh cho mỗi panel) qua mirror=True
+    _frame = dict(
+        showline=True, linewidth=1, linecolor="#cbd1d9", mirror=True,
     )
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
         tickfont=dict(size=base_font),
+        **_frame,
     )
     if state.yaxis_mode == "Chung":
         for r in range(1, n_rows + 1):
             fig.update_yaxes(
                 title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
                 tickfont=dict(size=base_font), row=r, col=1,
+                **_frame,
             )
+        # Other y-axes: frame only (no title to avoid duplicate)
+        fig.update_yaxes(**_frame)
     else:
         fig.update_yaxes(
             title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
             tickfont=dict(size=base_font),
+            **_frame,
         )
     st.plotly_chart(fig, use_container_width=True, key="p3_bar_chart")

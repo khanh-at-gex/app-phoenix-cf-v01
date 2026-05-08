@@ -153,6 +153,26 @@ else:
         km_filter=km_filter, shown_legend=shown_legend,
     )
 
+    # Line "Tổng CF" (sum CFO+CFI+CFF per period) — line + dot
+    total_series = (
+        chart_base[chart_base["khoan_muc"].isin(km_filter)]
+        .groupby("_period")["so_tien_tong"].sum()
+        .reindex(periods_sorted, fill_value=0)
+    )
+    fig.add_trace(go.Scatter(
+        x=x_numeric, y=total_series.values,
+        name="Tổng CF",
+        mode="lines+markers",
+        line=dict(color="#e67e22", width=2.5, dash="dot"),
+        marker=dict(size=8, color="#e67e22"),
+        legendgroup="Tổng CF",
+        customdata=periods_sorted,
+        hovertemplate=(
+            f"<b>Tổng CF — {ten_don_vi}</b><br>%{{customdata}}<br>"
+            "%{y:,.0f} triệu<extra></extra>"
+        ),
+    ))
+
     ts_height = chart_height_slider("p4_ts_height", default=520, min_v=300, max_v=800)
     fig.update_layout(
         barmode="stack",

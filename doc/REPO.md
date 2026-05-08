@@ -195,6 +195,7 @@ Orchestrator [pages/p3_dashboard.py](../pages/p3_dashboard.py) chỉ load data +
   - "Cách phân rã theo": Không phân rã / Bên trong-Bên ngoài / Ổn định-KOĐ · "Kỳ" Năm/Quý · "Trục Y" Riêng/Chung
   - Số Net ngoài cột (font Arial Black, màu Khoản mục) + **line "Tổng CF"** cam dotted per panel
   - 3 panel/row (wrap), default 3 đơn vị HOLDING+SUB_HOLDING (GELEX/GEE/GEL)
+  - **Subplot frame** cho mỗi panel (`mirror=True` axis lines), `horizontal_spacing=0.03` để 3 chart sát nhau hơn
 - **Tab 6 — Tổng hợp dòng tiền** ✅ ([utils/p3_total.py](../utils/p3_total.py)):
   - Single panel chart = sum across các đơn vị được chọn (default rỗng)
   - Same controls as Tab 5 trừ "Trục Y"; thay bằng checkbox "Hiển thị Lũy kế"
@@ -209,10 +210,10 @@ Orchestrator [pages/p3_dashboard.py](../pages/p3_dashboard.py) chỉ load data +
 - Reads: `df_report`, `df_summary`
 
 ### P4 — Chi tiết CTTV ✅ COMPLETE
-- Page-level filters: unit dropdown + khoản mục multiselect
+- Page-level filters: unit dropdown (folder-mapped labels) + khoản mục multiselect
 - Header: unit name + group badge
 - Sheet status bar
-- Bar+line chart (CF over time)
+- "Dòng tiền theo thời gian" chart (uses `add_breakdown_panel` từ [utils/breakdown_chart.py](../utils/breakdown_chart.py)): 3 cột CFO/CFI/CFF mỗi period + optional Level 2 stack + line "Tổng CF" cam dotted (sum CFO+CFI+CFF) + outer-end Net labels
 - CF36 Bên trong panel
 - Chi tiết chỉ tiêu table
 - Key Drivers table

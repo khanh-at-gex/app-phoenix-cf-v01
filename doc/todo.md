@@ -156,6 +156,15 @@ Update this file at the end of every AI session.
 - [x] Đối tác filter trong Sankey row 2: giữ raw vì counterparty external có thể không có folder mapping
 - [x] Ký pháp: `render_sankey_filters_and_prepare()` add `ordered_labels`/`label_to_unit` params; `p3_pivot.render()` restore signature
 
+### Pivot pass 5c
+- [x] Bảng pivot: dòng cuối **TỔNG CỘNG (Σ Net)** = sum tất cả Net rows; styling đậm (nền `#2c3e50`, chữ trắng)
+- [x] Bảng pivot: compact rows (font 12px, padding 3×8, line-height 1.2) — ~30% shorter
+
+### P4 + P3 Bar pass 5d
+- [x] P4 "Dòng tiền theo thời gian": thêm line "Tổng CF" (cam dotted, lines+markers) — đồng bộ với P3 Bar
+- [x] P3 "Biểu đồ phân rã dòng tiền": subplot frame qua `mirror=True` axis lines + giảm `horizontal_spacing` 0.08→0.03 + `vertical_spacing` 0.18→0.12 → 3 panels sát nhau hơn, có viền rõ
+- [x] P3 Bar: subplot titles to hơn (`16px` × font_scale, `family="Arial Black"`) + `yshift=14` đẩy lên cao hơn — top margin bump 80→90
+
 ---
 
 ## Pending
