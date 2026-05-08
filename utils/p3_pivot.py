@@ -198,19 +198,37 @@ def render(
         st.info("Không có dữ liệu với bộ lọc hiện tại.")
         return
 
+    # Grand Total row — sum tất cả Net rows (chỉ có khi show_net = True)
+    if show_net:
+        net_rows = [r for r in rows if r["is_net"]]
+        if net_rows:
+            grand_values = [0.0] * len(period_cols)
+            for r in net_rows:
+                for i, v in enumerate(r["values"]):
+                    if not pd.isna(v):
+                        grand_values[i] += float(v)
+            rows.append({
+                "unit": "TỔNG CỘNG",
+                "ct": "Net",
+                "extras": [""] * len(extra_keys),
+                "values": grand_values,
+                "is_net": True,
+                "is_grand": True,
+            })
+
     # Append Tổng (row sum) tới mỗi row
     for r in rows:
         total = float(pd.Series(r["values"]).fillna(0).sum())
         r["values"] = list(r["values"]) + [total]
 
-    # ── Compute rowspans ───────────────────────────────────────────────────
-    # Đơn vị rowspan = total rows của đơn vị
+    # ── Compute rowspans (loại trừ grand row) ──────────────────────────────
     unit_counts: dict[str, int] = {}
     for r in rows:
+        if r.get("is_grand"):
+            continue
         unit_counts[r["unit"]] = unit_counts.get(r["unit"], 0) + 1
 
-    # Loại giao dịch rowspan = số sub-rows trong (unit, ct) khi có extras;
-    # = 1 khi không có extras (chỉ có 1 row per ct).
+    # Loại giao dịch rowspan = số sub-rows trong (unit, ct) khi có extras
     ct_counts: dict[tuple[str, str], int] = {}
     if extra_cols:
         for r in rows:
@@ -241,10 +259,39 @@ def render(
         unit = r["unit"]
         ct = r["ct"]
         is_net = r["is_net"]
+        is_grand = r.get("is_grand", False)
         values = r["values"]
 
-        tr_class = "net-row" if is_net else ""
+        tr_class = (
+            "grand-row" if is_grand
+            else ("net-row" if is_net else "")
+        )
         cells = []
+
+        if is_grand:
+            # Grand Total row: 1 cell colspan = 2 + n_extras gộp Đơn vị + ct + extras
+            colspan_total = 2 + n_extras
+            cells.append(
+                f'<td class="grand-cell" colspan="{colspan_total}">'
+                '<strong>TỔNG CỘNG (Σ Net)</strong></td>'
+            )
+            # Period values + Tổng — fall through xuống loop dưới
+            for col_idx, v in enumerate(values):
+                is_total_col = (col_idx == n_period)
+                if pd.isna(v):
+                    cls = "num grand-cell total-col" if is_total_col else "num grand-cell"
+                    cells.append(f'<td class="{cls}">—</td>')
+                    continue
+                display_v = v / unit_divisor
+                text = fmt_str.format(display_v)
+                classes = ["num", "grand-cell"]
+                if is_total_col:
+                    classes.append("total-col")
+                if show_format and v != 0:
+                    classes.append("neg" if v < 0 else "pos")
+                cells.append(f'<td class="{" ".join(classes)}">{text}</td>')
+            body_rows.append(f'<tr class="{tr_class}">' + "".join(cells) + "</tr>")
+            continue  # next row
 
         # Đơn vị (rowspan)
         if unit not in seen_units:
@@ -294,18 +341,26 @@ def render(
 
     css = """
     <style>
-    .pivot-tbl { border-collapse: collapse; width: 100%; font-size: 13px;
-                 font-family: 'Inter', 'Segoe UI', Roboto, sans-serif; }
-    .pivot-tbl th, .pivot-tbl td { border: 1px solid #d9dfe6; padding: 6px 10px; }
+    .pivot-tbl { border-collapse: collapse; width: 100%; font-size: 12px;
+                 font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+                 line-height: 1.2; }
+    .pivot-tbl th, .pivot-tbl td { border: 1px solid #d9dfe6; padding: 3px 8px; }
     .pivot-tbl th.hdr { background: #f0f4f8; font-weight: 700; text-align: center; }
     .pivot-tbl th.total-hdr { background: #fff4d6; }
     .pivot-tbl td.unit-cell { background: #fdecea; font-weight: 700;
                               text-align: center; vertical-align: middle;
-                              font-size: 14px; }
+                              font-size: 13px; }
     .pivot-tbl td.ct-cell { text-align: left; font-weight: 600; }
-    .pivot-tbl td.dt-cell { text-align: left; padding-left: 16px; color: #555; font-size: 12px; }
+    .pivot-tbl td.dt-cell { text-align: left; padding-left: 14px; color: #555;
+                            font-size: 11px; }
     .pivot-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
     .pivot-tbl td.total-col { background: #fffbe6; font-weight: 700; }
+    .pivot-tbl tr.grand-row td.grand-cell {
+        background: #2c3e50; color: white; font-weight: 700; font-size: 13px;
+        text-align: center; padding: 5px 8px;
+    }
+    .pivot-tbl tr.grand-row td.grand-cell.num { text-align: right; }
+    .pivot-tbl tr.grand-row td.grand-cell.total-col { background: #1a252f; }
     """
     if show_format:
         css += """
@@ -313,6 +368,8 @@ def render(
     .pivot-tbl .pos { color: #1e8449; }
     .pivot-tbl tr.net-row td { background: #e3edf7; font-weight: 700; }
     .pivot-tbl tr.net-row td.total-col { background: #d9e7f3; }
+    .pivot-tbl tr.grand-row td.grand-cell.neg { color: #ff7d6e; }
+    .pivot-tbl tr.grand-row td.grand-cell.pos { color: #88e0a5; }
     """
     css += "</style>"
 
