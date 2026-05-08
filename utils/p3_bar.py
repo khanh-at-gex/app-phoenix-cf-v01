@@ -12,6 +12,7 @@ from utils.breakdown_chart import (
     compute_periods,
     resolve_breakdown,
 )
+from utils.charts import GEE_COLOR, GEL_COLOR
 from utils.p3_filter_controls import (
     apply_breakdown_filters,
     render_breakdown_filters,
@@ -21,6 +22,19 @@ from utils.ui import chart_font_scale, chart_height_slider
 _N_PER_ROW = 3
 # TODO: thay bằng companies.csv type=HOLDING/SUB_HOLDING khi wire xong (Phase D)
 _DEFAULT_PANEL_UNITS = ["GELEX", "GEE", "GEL"]
+_HOLDING_COLOR = "#c0392b"   # GELEX (HOLDING) — đỏ
+
+
+def _title_color(unit_code: str, unit_group: dict[str, str]) -> str:
+    """Màu subplot title dựa theo group của unit."""
+    if unit_code == "GELEX":
+        return _HOLDING_COLOR
+    g = unit_group.get(unit_code)
+    if g == "GEE":
+        return GEE_COLOR
+    if g == "GEL":
+        return GEL_COLOR
+    return "#1a1a1a"
 
 
 def render(
@@ -29,6 +43,7 @@ def render(
     base: pd.DataFrame,
     ordered_labels: list[str],
     label_to_unit: dict[str, str],
+    unit_group: dict[str, str],
 ) -> None:
     """Render Bar tab in-place. Mỗi đơn vị được chọn = 1 panel chart riêng."""
     report_units = set(df_report["ma_don_vi"].dropna().unique())
@@ -124,7 +139,8 @@ def render(
         min_v=400, max_v=800, step=50,
     )
     base_font = max(8, int(11 * bar_font_scale))
-    axis_title_font = max(7, int(10 * bar_font_scale))
+    axis_tick_font = max(11, int(14 * bar_font_scale))    # x/y tick labels
+    axis_title_font = max(9, int(12 * bar_font_scale))
     panel_title_font = max(13, int(16 * bar_font_scale))
     fig.update_layout(
         barmode="stack",
@@ -133,11 +149,19 @@ def render(
         margin=dict(l=0, r=0, t=90, b=40),
         font=dict(size=base_font),
     )
-    # Subplot titles bigger + lifted up
-    fig.update_annotations(
-        font=dict(size=panel_title_font, color="#1a1a1a", family="Arial Black"),
-        yshift=14,
-    )
+    # Subplot titles: colour theo group + bigger + lifted up.
+    # Chỉ chỉnh các title annotations (n_panels đầu tiên trong fig.layout.annotations);
+    # các Net annotations sau đó giữ nguyên màu KHOAN_MUC từ add_breakdown_panel.
+    n_subplot_titles = n_rows * _N_PER_ROW
+    for i in range(min(n_subplot_titles, len(fig.layout.annotations))):
+        if i < len(state.units):
+            color = _title_color(state.units[i], unit_group)
+        else:
+            color = "#1a1a1a"
+        fig.layout.annotations[i].font = dict(
+            size=panel_title_font, color=color, family="Arial Black",
+        )
+        fig.layout.annotations[i].yshift = 14
     # Subplot frame (viền 4 cạnh cho mỗi panel) qua mirror=True
     _frame = dict(
         showline=True, linewidth=1, linecolor="#cbd1d9", mirror=True,
@@ -145,22 +169,22 @@ def render(
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
-        tickfont=dict(size=base_font),
+        tickfont=dict(size=axis_tick_font),
         **_frame,
     )
     if state.yaxis_mode == "Chung":
         for r in range(1, n_rows + 1):
             fig.update_yaxes(
                 title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
-                tickfont=dict(size=base_font), row=r, col=1,
+                tickfont=dict(size=axis_tick_font), row=r, col=1,
                 **_frame,
             )
         # Other y-axes: frame only (no title to avoid duplicate)
-        fig.update_yaxes(**_frame)
+        fig.update_yaxes(tickfont=dict(size=axis_tick_font), **_frame)
     else:
         fig.update_yaxes(
             title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
-            tickfont=dict(size=base_font),
+            tickfont=dict(size=axis_tick_font),
             **_frame,
         )
     st.plotly_chart(fig, use_container_width=True, key="p3_bar_chart")

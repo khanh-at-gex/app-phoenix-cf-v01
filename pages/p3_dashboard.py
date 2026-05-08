@@ -82,6 +82,7 @@ with tab_bar:
     render_bar(
         df_report=df_report, base=base,
         ordered_labels=ordered_labels, label_to_unit=label_to_unit,
+        unit_group=unit_group,
     )
 
 with tab_total:

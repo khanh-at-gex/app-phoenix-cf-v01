@@ -233,22 +233,23 @@ def add_breakdown_panel(
             [periods_sorted[i], float(net_series.values[i])]
             for i in range(len(periods_sorted))
         ]
-        fig.add_trace(
-            go.Scatter(
-                x=x_label, y=y_label,
-                mode="text",
-                text=text_labels,
-                textposition=text_positions,
-                textfont=dict(
-                    size=max(8, int(10 * font_scale)),
-                    color=KHOAN_MUC_COLORS[km], family="Arial Black",
-                ),
-                showlegend=False,
-                customdata=hover_customdata,
-                hovertemplate=(
-                    f"<b>Net {km}</b><br>%{{customdata[0]}}<br>"
-                    f"<b>{panel_label}</b>: %{{customdata[1]:,.0f}} triệu<extra></extra>"
-                ),
-            ),
-            **rc_kwargs,
+        # Net labels qua annotations (Plotly Scatter không support textangle).
+        # Tilt -30° tránh chồng nhãn ngang. Trade-off: mất hover (annotation
+        # không có hover) — bar trace vẫn có hover hiển thị breakdown.
+        anno_font = dict(
+            size=max(8, int(10 * font_scale)),
+            color=KHOAN_MUC_COLORS[km], family="Arial Black",
         )
+        for x_pos, y_pos, txt, raw_v in zip(
+            x_label, y_label, text_labels, net_series.values
+        ):
+            anchor = "bottom" if raw_v >= 0 else "top"
+            fig.add_annotation(
+                x=x_pos, y=y_pos,
+                text=txt,
+                showarrow=False,
+                textangle=-30,
+                font=anno_font,
+                xanchor="center", yanchor=anchor,
+                **rc_kwargs,
+            )

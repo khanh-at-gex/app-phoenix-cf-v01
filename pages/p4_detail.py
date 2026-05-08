@@ -184,8 +184,12 @@ else:
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
+        tickfont=dict(size=14),
     )
-    fig.update_yaxes(title_text="triệu VNĐ", title_font=dict(size=10))
+    fig.update_yaxes(
+        title_text="triệu VNĐ", title_font=dict(size=12),
+        tickfont=dict(size=14),
+    )
     st.plotly_chart(fig, use_container_width=True, key="p4_timeseries")
 
 st.divider()

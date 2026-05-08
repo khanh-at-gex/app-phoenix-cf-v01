@@ -121,7 +121,8 @@ def render(
         "p3_total_height", default=520, min_v=400, max_v=800, step=20,
     )
     base_font = max(8, int(11 * total_font_scale))
-    axis_title_font = max(7, int(10 * total_font_scale))
+    axis_tick_font = max(11, int(14 * total_font_scale))
+    axis_title_font = max(9, int(12 * total_font_scale))
     fig.update_layout(
         barmode="stack",
         legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
@@ -132,19 +133,19 @@ def render(
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
-        tickfont=dict(size=base_font),
+        tickfont=dict(size=axis_tick_font),
     )
     fig.update_yaxes(
         title_text="Dòng tiền (triệu VNĐ)",
         title_font=dict(size=axis_title_font),
-        tickfont=dict(size=base_font),
+        tickfont=dict(size=axis_tick_font),
         secondary_y=False,
     )
     if state.show_cumul:
         fig.update_yaxes(
             title_text="Lũy kế (triệu VNĐ)",
             title_font=dict(size=axis_title_font),
-            tickfont=dict(size=base_font),
+            tickfont=dict(size=axis_tick_font),
             secondary_y=True,
         )
     st.plotly_chart(fig, use_container_width=True, key="p3_total_chart")
