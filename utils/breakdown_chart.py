@@ -135,6 +135,7 @@ def add_breakdown_panel(
     shown_legend: set[str],
     row: int | None = None,
     col: int | None = None,
+    font_scale: float = 1.0,
 ) -> None:
     """
     Add bars + outer-end labels for one panel (one ma_don_vi or one chart).
@@ -239,7 +240,8 @@ def add_breakdown_panel(
                 text=text_labels,
                 textposition=text_positions,
                 textfont=dict(
-                    size=10, color=KHOAN_MUC_COLORS[km], family="Arial Black",
+                    size=max(8, int(10 * font_scale)),
+                    color=KHOAN_MUC_COLORS[km], family="Arial Black",
                 ),
                 showlegend=False,
                 customdata=hover_customdata,

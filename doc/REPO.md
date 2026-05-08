@@ -54,11 +54,14 @@ data_etl/
 │   ├── ui.py                 # badge() HTML, chart_height_slider()
 │   ├── breakdown_chart.py    # Shared 3-cột-CFO/CFI/CFF chart builder (P3 Bar/Total + P4 Dòng tiền)
 │   ├── p3_filter_controls.py # Shared 2-row filter controls (P3 Bar + P3 Total)
-│   ├── p3_sankey.py          # P3 Tab 1 — Sankey
-│   ├── p3_heatmap.py         # P3 Tab 2 — Heatmap
-│   ├── p3_bar.py             # P3 Tab 3 — Biểu đồ phân rã (multi-panel)
-│   ├── p3_total.py           # P3 Tab 4 — Tổng hợp (single panel + cumulative)
-│   └── p3_cumul.py           # P3 Tab 5 — Tích lũy (placeholder)
+│   ├── p3_sankey_common.py   # Shared filter + agg + VAS swap (Sankey Plotly + ECharts)
+│   ├── p3_sankey.py          # P3 Tab — Sankey (Plotly)
+│   ├── p3_sankey_echarts.py  # P3 Tab — Sankey (ECharts, A/B test)
+│   ├── p3_heatmap.py         # P3 Tab — Heatmap
+│   ├── p3_pivot.py           # P3 Tab — Bảng pivot (HTML table với rowspan)
+│   ├── p3_bar.py             # P3 Tab — Biểu đồ phân rã (multi-panel + line Tổng CF)
+│   ├── p3_total.py           # P3 Tab — Tổng hợp (single panel + cumulative)
+│   └── p3_cumul.py           # P3 Tab — Tích lũy (placeholder)
 │
 ├── doc/
 │   ├── companies.csv         # Registry: ma_don_vi, ten_don_vi, type, group, folder
@@ -159,37 +162,50 @@ Status values: `"success"` | `"missing_sheet"` | `NaN` (no file)
 - Detail table with 4-sheet status per unit
 - Reads: `df_summary`
 
-### P3 — Dashboard chiến lược 🔶 PARTIAL (4/5 tabs)
-Orchestrator [pages/p3_dashboard.py](../pages/p3_dashboard.py) chỉ load data + dispatch sang `utils/p3_*.py`.
+### P3 — Dashboard chiến lược 🔶 PARTIAL (6/7 tabs)
+Orchestrator [pages/p3_dashboard.py](../pages/p3_dashboard.py) chỉ load data + dispatch sang `utils/p3_*.py`. Tất cả chart tabs có **`Cỡ chữ`** segmented control (Nhỏ 0.85× / Vừa 1.0× / Lớn 1.25× / Rất lớn 1.5×) và **`Chiều cao`** slider 300–800px.
 
-- **Tab 1 — Sankey dòng tiền nội bộ** ✅ ([utils/p3_sankey.py](../utils/p3_sankey.py)):
+- **Tab 1 — Sankey (Plotly)** ✅ ([utils/p3_sankey.py](../utils/p3_sankey.py)):
   - Mỗi link = 1 cặp `(ma_don_vi, doi_tuong_giao_dich_kinh_te)`, value = `|sum(so_tien_tong)|`
   - **VAS sign convention**: dấu `so_tien_tong` quyết định hướng arrow (Thu = counterparty → CTTV; Chi = CTTV → counterparty). Xem ISSUES #10
-  - Row 1 (7 filter): Năm (multiselect) · Quý · Loại dòng (Thu/Chi/Tất cả, default Thu) · Phân loại ổn định · Phân loại Nội/Ngoại (default Bên trong) · Khoản mục · Loại giao dịch (multiselect, depend on Khoản mục)
-  - Row 2 (2 filter, raw columns): Đơn vị (`ma_don_vi`) · Đối tác (`doi_tuong_giao_dich_kinh_te`) — show cả Thu lẫn Chi của đơn vị được chọn
+  - Filter row 1 (7 control): Năm (multiselect) · Quý · Loại dòng (Thu/Chi/Tất cả, default Thu) · Phân loại ổn định · Phân loại Nội/Ngoại (default Bên trong) · Khoản mục · Loại giao dịch (multiselect, depend on Khoản mục)
+  - Filter row 2 (company-centric): **Đơn vị** dùng folder-mapped labels giống P4 (`"01. GELEX"`, `"23. BSG2 — DA07"`) · **Đối tác** dùng raw `doi_tuong_giao_dich_kinh_te` (vì counterparty external có thể không có folder mapping). Show cả Thu lẫn Chi của đơn vị được chọn
+  - Filter + agg + VAS swap shared với ECharts tab qua [utils/p3_sankey_common.py](../utils/p3_sankey_common.py)
   - **Node positions FIXED** (cumulative-value y) → annotation rơi đúng midpoint
-  - Annotations giá trị trên top 10 link lớn nhất (link nhỏ xem qua hover)
-  - Node labels append tổng inflow: `"GEE (2,500B)"`
-  - Border container, height slider 400-800
-  - Expander "🔍 Xem dữ liệu gốc" hiện 2 tab Raw rows + Aggregated pairs
-- **Tab 2 — Heatmap Dòng tiền từng CT** ✅ ([utils/p3_heatmap.py](../utils/p3_heatmap.py)):
+  - Annotations giá trị trên top 10 link lớn nhất (link nhỏ xem qua hover); node labels append tổng inflow `"GEE (2,500B)"`
+  - Border container; expander "🔍 Xem dữ liệu gốc" với raw + aggregated pairs
+- **Tab 2 — Sankey (ECharts)** 🧪 A/B test ([utils/p3_sankey_echarts.py](../utils/p3_sankey_echarts.py)):
+  - Cùng data + filter UI + VAS swap qua `p3_sankey_common`, session keys `p3_ec_*` riêng độc lập với Plotly tab
+  - Render qua ECharts CDN (`echarts@5.5.0`) + `st.components.v1.html` — không cần Python wrapper
+  - **Native draggable nodes**, edge labels prefixed `"→"` show value trên link, animation 500ms
+  - GELEX node hardcode màu đỏ `#c0392b` (HOLDING)
+- **Tab 3 — Heatmap Dòng tiền từng CT** ✅ ([utils/p3_heatmap.py](../utils/p3_heatmap.py)):
   - Units × periods colored by net CF, dynamic colorbar ticks
   - 6 filter: Đơn vị · Show theo (Năm/Quý, default Năm) · Phân loại ổn định · Nội/Ngoại · Khoản mục · Loại giao dịch (multiselect, depend on Khoản mục)
-  - Folder-ordered rows, height slider 300-800
-- **Tab 3 — Biểu đồ phân rã dòng tiền** ✅ ([utils/p3_bar.py](../utils/p3_bar.py)):
+  - Folder-ordered rows
+- **Tab 4 — Bảng pivot** ✅ ([utils/p3_pivot.py](../utils/p3_pivot.py)):
+  - HTML table render với `<td rowspan>` merge cột Đơn vị (`st.dataframe` không support cell merge)
+  - Filter giống Heatmap (Đơn vị **folder-mapped** giống P4, Show theo, Ổn định, Nội/Ngoại, Khoản mục, Loại giao dịch)
+  - Display options: **Hiển thị Net** (tổng per đơn vị), **Conditional format** (sign color + Net bg), **Đơn vị Triệu/Tỷ** (data ÷ 1,000)
+  - **Phân rã thêm theo** multiselect 3 options (Đối tác / Ổn định / Nội/Ngoại) — chọn 0+ để add row levels. Sub-rows lặp + Loại giao dịch rowspan = số sub-rows. Net row colspan = `1 + n_extras`
+  - Cột **"Tổng"** cuối bảng = row sum across periods (nền vàng)
+  - Net rows: bold, nền xanh nhạt; conditional format: âm đỏ / dương xanh lá
+- **Tab 5 — Biểu đồ phân rã dòng tiền** ✅ ([utils/p3_bar.py](../utils/p3_bar.py)):
   - Mỗi đơn vị được chọn = 1 panel chart riêng. Mỗi period có 3 cột CFO/CFI/CFF cạnh nhau (offsetgroup); optional 2-level stack theo Ổn định/KOĐ hoặc Bên trong/Ngoài
-  - "Cách phân rã theo": Không phân rã / Bên trong-Bên ngoài / Ổn định-KOĐ
-  - "Kỳ" Năm/Quý · "Trục Y" Riêng/Chung
-  - Số Net hiển thị ở đầu mút ngoài cột (font Arial Black, màu Khoản mục)
-  - 3 panel/row (wrap), default 3 đơn vị HOLDING+SUB_HOLDING (GELEX/GEE/GEL), height slider 400-800
-- **Tab 4 — Tổng hợp dòng tiền** ✅ ([utils/p3_total.py](../utils/p3_total.py)):
+  - "Cách phân rã theo": Không phân rã / Bên trong-Bên ngoài / Ổn định-KOĐ · "Kỳ" Năm/Quý · "Trục Y" Riêng/Chung
+  - Số Net ngoài cột (font Arial Black, màu Khoản mục) + **line "Tổng CF"** cam dotted per panel
+  - 3 panel/row (wrap), default 3 đơn vị HOLDING+SUB_HOLDING (GELEX/GEE/GEL)
+- **Tab 6 — Tổng hợp dòng tiền** ✅ ([utils/p3_total.py](../utils/p3_total.py)):
   - Single panel chart = sum across các đơn vị được chọn (default rỗng)
-  - Same controls as Tab 3 trừ "Trục Y"; thay bằng checkbox "Hiển thị Lũy kế"
+  - Same controls as Tab 5 trừ "Trục Y"; thay bằng checkbox "Hiển thị Lũy kế"
   - **Line "Tổng CF (kỳ)"** cam dotted (primary Y) + **line "Lũy kế"** xanh đen solid (secondary Y, optional)
-  - height slider 400-800
-- **Tab 5 — Tích lũy dư tiền** ❌ placeholder
+- **Tab 7 — Tích lũy dư tiền** ❌ placeholder
 - KPI row (4 cards above tabs) ❌ not built
-- Shared utils: [utils/breakdown_chart.py](../utils/breakdown_chart.py) (chart builder), [utils/p3_filter_controls.py](../utils/p3_filter_controls.py) (filter row + apply, dùng cho cả Bar và Total)
+- Shared utils:
+  - [utils/breakdown_chart.py](../utils/breakdown_chart.py) — bar chart builder cho Bar + Total
+  - [utils/p3_filter_controls.py](../utils/p3_filter_controls.py) — filter row + apply cho Bar + Total
+  - [utils/p3_sankey_common.py](../utils/p3_sankey_common.py) — filter + VAS swap cho Sankey Plotly + ECharts
+  - [utils/ui.py](../utils/ui.py) — `chart_height_slider`, `chart_font_scale`
 - Reads: `df_report`, `df_summary`
 
 ### P4 — Chi tiết CTTV ✅ COMPLETE
@@ -250,7 +266,19 @@ Bars cũng dùng numeric x để Plotly bargroup auto-spread. Xem ISSUES #9.
 P3 Tab Sankey: hướng mũi tên đi theo HƯỚNG TIỀN CHẢY THẬT, không phải hướng báo cáo. Theo VAS: `so_tien_tong > 0` = thu (CTTV nhận), `< 0` = chi (CTTV trả). Source/target được swap theo dấu trước khi build Sankey. Xem ISSUES #10.
 
 ### Shared breakdown chart logic
-P3 Tab 3 và P4 "Dòng tiền theo thời gian" có cùng pattern (3 cột CFO/CFI/CFF/period + optional Level 2 stack + outer-end labels). Logic chung trong [utils/breakdown_chart.py](../utils/breakdown_chart.py): `BREAKDOWN_OPTIONS`, `KM_OFFSET`, `STACK_COL`, `CAT_ORDER`, `compute_periods()`, `resolve_breakdown()`, `compute_label_y_offset()`, `add_breakdown_panel()`.
+P3 Tab Biểu đồ phân rã + Tổng hợp + P4 "Dòng tiền theo thời gian" có cùng pattern (3 cột CFO/CFI/CFF/period + optional Level 2 stack + outer-end labels). Logic chung trong [utils/breakdown_chart.py](../utils/breakdown_chart.py): `BREAKDOWN_OPTIONS`, `KM_OFFSET`, `STACK_COL`, `CAT_ORDER`, `compute_periods()`, `resolve_breakdown()`, `compute_label_y_offset()`, `add_breakdown_panel()`. P3 Bar tab thêm line "Tổng CF" mỗi panel.
+
+### Shared Sankey filter + agg
+P3 Sankey Plotly và ECharts có cùng filter UI (7-control row + 2-control row) + apply filters + VAS swap. Logic chung trong [utils/p3_sankey_common.py](../utils/p3_sankey_common.py): `render_sankey_filters_and_prepare()` trả về `SankeyData(sk, agg, sk_loai)`. Mỗi tab caller chỉ cần render từ `agg` theo library riêng.
+
+### Font scale + chart height controls
+[utils/ui.py](../utils/ui.py): `chart_height_slider(key, default, min, max)` slider 300-800px; `chart_font_scale(key)` segmented control 4 mức (Nhỏ 0.85× / Vừa 1.0× / Lớn 1.25× / Rất lớn 1.5×). Áp dụng cho tất cả chart tabs trong P3 + P4.
+
+### `fmt_money_short` cap tại B (tỷ)
+[utils/charts.py](../utils/charts.py): không dùng "T" (nghìn tỷ) — user yêu cầu so sánh dễ hơn ở đơn vị B. Quy tắc: ≥100B → integer with comma (e.g. `2,500B`); 1B–100B → 1 decimal (e.g. `21.5B`); <1B → raw triệu.
+
+### Pivot table HTML rendering
+[utils/p3_pivot.py](../utils/p3_pivot.py): dùng `st.markdown(html, unsafe_allow_html=True)` với `<table><td rowspan>...</td></table>` vì `st.dataframe` không support cell merge cần thiết để hiển thị "Excel-style" hierarchy (Đơn vị merged across multi-row chi_tieu groups). 3-level rowspan khi bật "Phân rã theo Đối tác".
 
 ### Lazy ROOT_DIR
 `utils/data_loader.py` does NOT read `ROOT_DIR` at import time. It reads inside `_fetch_all()` via `os.environ.get("ROOT_DIR")` and raises a clear `RuntimeError` if missing. This avoids import-time crashes when the env var hasn't been bridged from `st.secrets` yet.

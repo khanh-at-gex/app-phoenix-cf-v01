@@ -30,3 +30,18 @@ def chart_height_slider(
         label, min_value=min_v, max_value=max_v,
         value=safe_default, step=step, key=key,
     )
+
+
+_FONT_SCALES = {"Nhỏ": 0.85, "Vừa": 1.0, "Lớn": 1.25, "Rất lớn": 1.5}
+
+
+def chart_font_scale(key: str, default: str = "Vừa") -> float:
+    """
+    Segmented control "Cỡ chữ" cho chart text. Trả về scale multiplier (1.0 = base).
+    Nhỏ=0.85, Vừa=1.0, Lớn=1.25, Rất lớn=1.5.
+    """
+    label = st.segmented_control(
+        "Cỡ chữ", list(_FONT_SCALES.keys()),
+        default=default, key=key,
+    ) or default
+    return _FONT_SCALES.get(label, 1.0)

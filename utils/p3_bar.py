@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
@@ -15,7 +16,7 @@ from utils.p3_filter_controls import (
     apply_breakdown_filters,
     render_breakdown_filters,
 )
-from utils.ui import chart_height_slider
+from utils.ui import chart_font_scale, chart_height_slider
 
 _N_PER_ROW = 3
 # TODO: thay bằng companies.csv type=HOLDING/SUB_HOLDING khi wire xong (Phase D)
@@ -70,6 +71,8 @@ def render(
         vertical_spacing=0.18 if n_rows > 1 else 0.0,
     )
 
+    bar_font_scale = chart_font_scale("p3_bar_font")
+
     shown_legend: set = set()
     for idx, unit_code in enumerate(state.units):
         row = idx // _N_PER_ROW + 1
@@ -88,6 +91,31 @@ def render(
             label_y_offset=label_y_offset,
             km_filter=km_filter, shown_legend=shown_legend,
             row=row, col=col,
+            font_scale=bar_font_scale,
+        )
+
+        # ── Line "Tổng CF" (sum CFO+CFI+CFF per period) ───────────────────
+        total_series = (
+            g_df[g_df["khoan_muc"].isin(km_filter)]
+            .groupby("_period")["so_tien_tong"].sum()
+            .reindex(periods_sorted, fill_value=0)
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_numeric, y=total_series.values,
+                name="Tổng CF",
+                mode="lines+markers",
+                line=dict(color="#e67e22", width=2.5, dash="dot"),
+                marker=dict(size=8, color="#e67e22"),
+                legendgroup="Tổng CF",
+                showlegend=(idx == 0),  # show legend chỉ panel đầu
+                customdata=periods_sorted,
+                hovertemplate=(
+                    f"<b>Tổng CF — {unit_code}</b><br>%{{customdata}}<br>"
+                    "%{y:,.0f} triệu<extra></extra>"
+                ),
+            ),
+            row=row, col=col,
         )
 
     bar_height = chart_height_slider(
@@ -95,22 +123,29 @@ def render(
         default=max(420, n_rows * 380 + 80),
         min_v=400, max_v=800, step=50,
     )
+    base_font = max(8, int(11 * bar_font_scale))
+    axis_title_font = max(7, int(10 * bar_font_scale))
     fig.update_layout(
         barmode="stack",
         legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
         height=bar_height,
         margin=dict(l=0, r=0, t=80, b=40),
-        font=dict(size=11),
+        font=dict(size=base_font),
     )
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
+        tickfont=dict(size=base_font),
     )
     if state.yaxis_mode == "Chung":
         for r in range(1, n_rows + 1):
             fig.update_yaxes(
-                title_text="triệu VNĐ", title_font=dict(size=10), row=r, col=1,
+                title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
+                tickfont=dict(size=base_font), row=r, col=1,
             )
     else:
-        fig.update_yaxes(title_text="triệu VNĐ", title_font=dict(size=10))
+        fig.update_yaxes(
+            title_text="triệu VNĐ", title_font=dict(size=axis_title_font),
+            tickfont=dict(size=base_font),
+        )
     st.plotly_chart(fig, use_container_width=True, key="p3_bar_chart")

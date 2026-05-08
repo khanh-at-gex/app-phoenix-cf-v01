@@ -113,6 +113,49 @@ Update this file at the end of every AI session.
 - [x] Đổi P3 Bar wrap từ 2/row → **3/row** (default 3 panels GELEX/GEE/GEL khít 1 hàng)
 - [x] P2: cột "Tên file" cuối bảng, bỏ cột "Group", `Cập nhật` format `YYYY-MM-DD HH:MM:SS` GMT+7
 
+## Refactor pass 4 (2026-05-08) — A/B test ECharts
+
+- [x] New tab "Sankey (ECharts)" ([utils/p3_sankey_echarts.py](../utils/p3_sankey_echarts.py)) song song với tab Plotly để A/B compare
+- [x] ECharts loaded qua CDN `echarts@5.5.0` (`st.components.v1.html`) — không cần Python wrapper (`streamlit-echarts` v0.6 không tương thích với Streamlit 1.55 components.v2)
+- [x] Same VAS swap, same filter UI, session keys `p3_ec_*` (độc lập với `p3_sk_*`)
+- [x] Native ECharts features: draggable nodes, edge labels trên mỗi link, gradient line, hover adjacency
+- [x] GELEX node hardcode màu đỏ `#c0392b` (HOLDING)
+- [x] Edge labels prepend "→" để chỉ direction (ECharts không có native arrowhead; graphic.elements positioning fragile)
+- [ ] **A/B decision pending** — sau khi user test:
+  - (a) Giữ Plotly, drop ECharts tab
+  - (b) Switch sang ECharts hoàn toàn — replace `utils/p3_sankey.py`
+  - (c) Giữ cả 2 (không khuyến nghị)
+
+## Refactor pass 5 (2026-05-08) — Pivot tab + features + share more
+
+### New features
+- [x] **New tab "Bảng pivot"** ([utils/p3_pivot.py](../utils/p3_pivot.py)) — HTML table với rowspan merge cột Đơn vị
+  - Filter giống Heatmap (Đơn vị raw, Show theo, Ổn định, Nội/Ngoại, Khoản mục, Loại giao dịch)
+  - Display options: Hiển thị Net, Conditional format, Đơn vị Triệu/Tỷ, Phân rã theo Đối tác
+  - Cột "Tổng" cuối bảng (= row sum), Net rows per đơn vị (bold + bg)
+- [x] **`chart_font_scale()`** ([utils/ui.py](../utils/ui.py)) — segmented control Nhỏ/Vừa/Lớn/Rất lớn, áp dụng cho tất cả P3 chart tabs
+- [x] **`fmt_money_short`** cap tại B (tỷ), không dùng T
+- [x] P3 Bar tab thêm **line "Tổng CF"** (line + dot) per panel
+- [x] Sankey: "Loại giao dịch" multiselect; row 2 filter Đơn vị/Đối tác (raw); arrow direction VAS-correct
+- [x] Heatmap: "Show theo" Năm/Quý filter
+
+### Refactor (extract shared)
+- [x] [utils/p3_sankey_common.py](../utils/p3_sankey_common.py) — extract filter row 1 + row 2 + apply + VAS swap (~120 lines duplicate giữa Plotly và ECharts Sankey)
+- [x] [utils/p3_sankey.py](../utils/p3_sankey.py): refactor dùng `render_sankey_filters_and_prepare()` (347 → ~210 lines)
+- [x] [utils/p3_sankey_echarts.py](../utils/p3_sankey_echarts.py): refactor dùng common helper (310 → ~180 lines)
+- [x] [utils/p3_pivot.py](../utils/p3_pivot.py): cleanup signature — bỏ unused `ordered_labels` / `label_to_unit` args (dùng raw `ma_don_vi`)
+- [x] [pages/p3_dashboard.py](../pages/p3_dashboard.py): update `render_pivot()` call
+
+### Doc sync
+- [x] [doc/REPO.md](../doc/REPO.md): layout block + 7-tab section rewrite + Key Design Decisions (Sankey common, font scale, fmt_money_short B-only, Pivot HTML render)
+- [x] [doc/todo.md](../doc/todo.md): pass 4 + 5 entries
+
+### Pivot tab pass 5b (cùng ngày)
+- [x] Bảng pivot: thay checkbox "Phân rã theo Đối tác" thành **multiselect 3 options** (Đối tác / Ổn định / Nội/Ngoại) — chọn 0+ levels
+- [x] Đơn vị filter trong P3 Pivot + Sankey row 2: chuẩn hoá dùng `ordered_labels` (folder-mapped, giống P4) — nhất quán với Heatmap/Bar/Total
+- [x] Đối tác filter trong Sankey row 2: giữ raw vì counterparty external có thể không có folder mapping
+- [x] Ký pháp: `render_sankey_filters_and_prepare()` add `ordered_labels`/`label_to_unit` params; `p3_pivot.render()` restore signature
+
 ---
 
 ## Pending

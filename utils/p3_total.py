@@ -16,7 +16,7 @@ from utils.p3_filter_controls import (
     apply_breakdown_filters,
     render_breakdown_filters,
 )
-from utils.ui import chart_height_slider
+from utils.ui import chart_font_scale, chart_height_slider
 
 
 def render(
@@ -63,6 +63,7 @@ def render(
         f"Tổng hợp ({len(state.units)} đơn vị)"
         if len(state.units) > 1 else state.units[0]
     )
+    total_font_scale = chart_font_scale("p3_total_font")
     shown_legend: set = set()
     add_breakdown_panel(
         fig, df,
@@ -73,6 +74,7 @@ def render(
         label_y_offset=label_y_offset,
         km_filter=km_filter, shown_legend=shown_legend,
         row=1, col=1,
+        font_scale=total_font_scale,
     )
 
     # ── Tổng CF line + Lũy kế line ──────────────────────────────────────────
@@ -118,24 +120,31 @@ def render(
     height = chart_height_slider(
         "p3_total_height", default=520, min_v=400, max_v=800, step=20,
     )
+    base_font = max(8, int(11 * total_font_scale))
+    axis_title_font = max(7, int(10 * total_font_scale))
     fig.update_layout(
         barmode="stack",
         legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0),
         height=height,
         margin=dict(l=0, r=0, t=80, b=40),
-        font=dict(size=11),
+        font=dict(size=base_font),
     )
     fig.update_xaxes(
         tickmode="array", tickvals=x_numeric,
         ticktext=periods_sorted, tickangle=-45,
+        tickfont=dict(size=base_font),
     )
     fig.update_yaxes(
         title_text="Dòng tiền (triệu VNĐ)",
-        title_font=dict(size=10), secondary_y=False,
+        title_font=dict(size=axis_title_font),
+        tickfont=dict(size=base_font),
+        secondary_y=False,
     )
     if state.show_cumul:
         fig.update_yaxes(
             title_text="Lũy kế (triệu VNĐ)",
-            title_font=dict(size=10), secondary_y=True,
+            title_font=dict(size=axis_title_font),
+            tickfont=dict(size=base_font),
+            secondary_y=True,
         )
     st.plotly_chart(fig, use_container_width=True, key="p3_total_chart")

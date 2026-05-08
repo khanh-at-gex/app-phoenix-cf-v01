@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from utils.charts import HEATMAP_COLORSCALE, fmt_money_short
-from utils.ui import chart_height_slider
+from utils.ui import chart_font_scale, chart_height_slider
 
 
 def render(
@@ -124,17 +124,22 @@ def render(
     ticktext = [fmt_money_short(v) for v in tickvals]
 
     cell_h = max(34, min(50, 680 // max(len(units), 1)))
-    font_size = max(9, min(12, cell_h - 22))
+    base_cell_font = max(9, min(12, cell_h - 22))
+
+    hm_font_scale = chart_font_scale("p3_hm_font")
+    cell_font_size = max(7, int(base_cell_font * hm_font_scale))
+    axis_font_size = max(7, int(11 * hm_font_scale))
 
     fig = go.Figure(go.Heatmap(
         z=z_vals, x=periods, y=units,
         text=annot, texttemplate="%{text}",
-        textfont={"size": font_size, "color": "#1a1a1a"},
+        textfont={"size": cell_font_size, "color": "#1a1a1a"},
         colorscale=HEATMAP_COLORSCALE,
         zmin=-z_abs, zmax=z_abs,
         colorbar=dict(
             tickvals=tickvals, ticktext=ticktext,
             thickness=14, len=0.85,
+            tickfont=dict(size=max(7, int(10 * hm_font_scale))),
             title=dict(text="", side="right"),
         ),
         hovertemplate="<b>%{y}</b><br>%{x}<br><b>%{text}</b> (%{z:,.0f} triệu)<extra></extra>",
@@ -145,8 +150,16 @@ def render(
         min_v=300, max_v=800, step=50,
     )
     fig.update_layout(
-        xaxis=dict(tickangle=-45, side="bottom", tickfont=dict(size=10), fixedrange=True),
-        yaxis=dict(autorange="reversed", tickfont=dict(size=11), fixedrange=True),
+        xaxis=dict(
+            tickangle=-45, side="bottom",
+            tickfont=dict(size=max(7, int(10 * hm_font_scale))),
+            fixedrange=True,
+        ),
+        yaxis=dict(
+            autorange="reversed",
+            tickfont=dict(size=axis_font_size),
+            fixedrange=True,
+        ),
         height=hm_height,
         margin=dict(l=0, r=0, t=6, b=80),
         plot_bgcolor="white",
