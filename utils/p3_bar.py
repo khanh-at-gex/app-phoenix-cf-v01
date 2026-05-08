@@ -12,7 +12,7 @@ from utils.breakdown_chart import (
     compute_periods,
     resolve_breakdown,
 )
-from utils.charts import GEE_COLOR, GEL_COLOR
+from utils.charts import GEE_COLOR, GEL_COLOR, fmt_money_short
 from utils.p3_filter_controls import (
     apply_breakdown_filters,
     render_breakdown_filters,
@@ -115,13 +115,25 @@ def render(
             .groupby("_period")["so_tien_tong"].sum()
             .reindex(periods_sorted, fill_value=0)
         )
+        total_text_labels = [fmt_money_short(v) for v in total_series.values]
+        total_text_pos = [
+            "top center" if v >= 0 else "bottom center"
+            for v in total_series.values
+        ]
         fig.add_trace(
             go.Scatter(
                 x=x_numeric, y=total_series.values,
                 name="Tổng CF",
-                mode="lines+markers",
+                mode="lines+markers+text",
                 line=dict(color="#e67e22", width=2.5, dash="dot"),
                 marker=dict(size=8, color="#e67e22"),
+                text=total_text_labels,
+                textposition=total_text_pos,
+                textfont=dict(
+                    family="Arial Black",
+                    size=max(9, int(11 * bar_font_scale)),
+                    color="#d35400",
+                ),
                 legendgroup="Tổng CF",
                 showlegend=(idx == 0),  # show legend chỉ panel đầu
                 customdata=periods_sorted,

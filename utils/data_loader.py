@@ -222,8 +222,10 @@ def _clean_adl(df: pd.DataFrame) -> pd.DataFrame:
     }
     df = df.rename(columns=mapping)
     df = df[[c for c in mapping.values() if c in df.columns]]
-    df["nam"] = pd.to_numeric(df["nam"], errors="coerce").astype("Int64")
-    df["thi_phan_uoc_tinh"] = pd.to_numeric(df["thi_phan_uoc_tinh"], errors="coerce")
+    if "nam" in df.columns:
+        df["nam"] = pd.to_numeric(df["nam"], errors="coerce").astype("Int64")
+    if "thi_phan_uoc_tinh" in df.columns:
+        df["thi_phan_uoc_tinh"] = pd.to_numeric(df["thi_phan_uoc_tinh"], errors="coerce")
     return df
 
 

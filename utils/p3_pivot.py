@@ -149,8 +149,8 @@ def render(
         extra_cols.append(("phan_loai_ben_trong_ben_ngoai", "Nội/Ngoại"))
     extra_keys = [c[0] for c in extra_cols]
 
-    # ── Pivot: index = (ma_don_vi, chi_tieu, *extras) ──────────────────────
-    pivot_idx_cols = ["ma_don_vi", "chi_tieu"] + extra_keys
+    # ── Pivot: index = (ma_don_vi, khoan_muc, chi_tieu, *extras) ───────────
+    pivot_idx_cols = ["ma_don_vi", "khoan_muc", "chi_tieu"] + extra_keys
     pivot = df.pivot_table(
         index=pivot_idx_cols,
         columns="_period",
@@ -165,9 +165,16 @@ def render(
     else:
         unit_order = sorted(pivot.index.get_level_values(0).unique().tolist())
 
-    # ── Build rows từ flat pivot ───────────────────────────────────────────
-    # Mỗi row dict: {unit, ct, extras (list), values, is_net}
+    # Khoản mục order: CFO, CFI, CFF (giữ thứ tự logic của báo cáo)
+    KM_ORDER = ["CFO", "CFI", "CFF"]
     pivot_flat = pivot.reset_index()
+    pivot_flat["_km_order"] = pivot_flat["khoan_muc"].map(
+        {k: i for i, k in enumerate(KM_ORDER)}
+    ).fillna(99).astype(int)
+    pivot_flat = pivot_flat.sort_values(["_km_order", "chi_tieu"]).drop(columns="_km_order")
+
+    # ── Build rows từ flat pivot ───────────────────────────────────────────
+    # Mỗi row dict: {unit, km, ct, extras (list), values, is_net}
     rows: list[dict] = []
     for unit in unit_order:
         unit_subset = pivot_flat[pivot_flat["ma_don_vi"] == unit]
@@ -176,6 +183,7 @@ def render(
         for _, r in unit_subset.iterrows():
             rows.append({
                 "unit": str(r["ma_don_vi"]),
+                "km": str(r["khoan_muc"]),
                 "ct": str(r["chi_tieu"]),
                 "extras": [str(r[k]) for k in extra_keys],
                 "values": [r[p] for p in period_cols],
@@ -185,6 +193,7 @@ def render(
         net_values = [unit_subset[p].sum() for p in period_cols]
         rows.append({
             "unit": unit,
+            "km": "",
             "ct": "Net",
             "extras": [""] * len(extra_keys),
             "values": net_values,
@@ -209,6 +218,7 @@ def render(
                         grand_values[i] += float(v)
             rows.append({
                 "unit": "TỔNG CỘNG",
+                "km": "",
                 "ct": "Net",
                 "extras": [""] * len(extra_keys),
                 "values": grand_values,
@@ -221,6 +231,24 @@ def render(
         total = float(pd.Series(r["values"]).fillna(0).sum())
         r["values"] = list(r["values"]) + [total]
 
+    # ── Display filter: hide rows theo Loại giao dịch (Net giữ nguyên) ──────
+    detail_cts = sorted({r["ct"] for r in rows if not r["is_net"]})
+    if detail_cts:
+        show_cts = st.multiselect(
+            "Hiển thị Loại giao dịch (Net & Tổng cộng giữ nguyên)",
+            detail_cts, default=detail_cts,
+            key="p3_pv_disp_ct",
+            help="Bỏ tick để ẩn row Loại giao dịch. Net + Tổng cộng vẫn tính trên TẤT CẢ.",
+        )
+        if len(show_cts) < len(detail_cts):
+            rows = [
+                r for r in rows
+                if r["is_net"] or r.get("is_grand") or r["ct"] in show_cts
+            ]
+            if not rows or all(r.get("is_grand") or r["is_net"] for r in rows):
+                # All detail hidden — only Net/Grand visible. Still useful to show.
+                pass
+
     # ── Compute rowspans (loại trừ grand row) ──────────────────────────────
     unit_counts: dict[str, int] = {}
     for r in rows:
@@ -228,19 +256,28 @@ def render(
             continue
         unit_counts[r["unit"]] = unit_counts.get(r["unit"], 0) + 1
 
-    # Loại giao dịch rowspan = số sub-rows trong (unit, ct) khi có extras
-    ct_counts: dict[tuple[str, str], int] = {}
+    # Khoản mục rowspan = số sub-rows trong (unit, km), không tính Net
+    km_counts: dict[tuple[str, str], int] = {}
+    for r in rows:
+        if r.get("is_grand") or r["is_net"]:
+            continue
+        key = (r["unit"], r["km"])
+        km_counts[key] = km_counts.get(key, 0) + 1
+
+    # Loại giao dịch rowspan = số sub-rows trong (unit, km, ct) khi có extras
+    ct_counts: dict[tuple[str, str, str], int] = {}
     if extra_cols:
         for r in rows:
             if r["is_net"]:
                 continue
-            key = (r["unit"], r["ct"])
+            key = (r["unit"], r["km"], r["ct"])
             ct_counts[key] = ct_counts.get(key, 0) + 1
 
     # ── Build HTML ─────────────────────────────────────────────────────────
     unit_short = "triệu" if unit_label == "Triệu" else "tỷ"
     header_cells = [
         '<th class="hdr">Đơn vị</th>',
+        '<th class="hdr">Khoản mục</th>',
         f'<th class="hdr">Loại giao dịch ({unit_short} VNĐ)</th>',
     ]
     for _, lbl in extra_cols:
@@ -251,7 +288,8 @@ def render(
 
     body_rows = []
     seen_units: set[str] = set()
-    seen_unit_ct: set[tuple[str, str]] = set()
+    seen_unit_km: set[tuple[str, str]] = set()
+    seen_unit_km_ct: set[tuple[str, str, str]] = set()
     n_period = len(period_cols)
     n_extras = len(extra_cols)
 
@@ -269,8 +307,8 @@ def render(
         cells = []
 
         if is_grand:
-            # Grand Total row: 1 cell colspan = 2 + n_extras gộp Đơn vị + ct + extras
-            colspan_total = 2 + n_extras
+            # Grand Total row: gộp Đơn vị + Khoản mục + ct + extras
+            colspan_total = 3 + n_extras
             cells.append(
                 f'<td class="grand-cell" colspan="{colspan_total}">'
                 '<strong>TỔNG CỘNG (Σ Net)</strong></td>'
@@ -293,6 +331,8 @@ def render(
             body_rows.append(f'<tr class="{tr_class}">' + "".join(cells) + "</tr>")
             continue  # next row
 
+        km = r.get("km", "")
+
         # Đơn vị (rowspan)
         if unit not in seen_units:
             seen_units.add(unit)
@@ -301,19 +341,26 @@ def render(
             )
 
         if is_net:
-            # Net row: ct cell colspan = 1 + n_extras để merge ct + extras
-            colspan = 1 + n_extras
+            # Net row: gộp Khoản mục + ct + extras
+            colspan = 2 + n_extras
             cells.append(
                 f'<td class="ct-cell" colspan="{colspan}"><strong>Net</strong></td>'
             )
         else:
+            # Khoản mục (rowspan = số sub-rows trong (unit, km))
+            km_key = (unit, km)
+            if km_key not in seen_unit_km:
+                seen_unit_km.add(km_key)
+                cells.append(
+                    f'<td rowspan="{km_counts[km_key]}" class="km-cell">{km}</td>'
+                )
             if extra_cols:
-                # Loại giao dịch (rowspan = số sub-rows trong (unit, ct))
-                key = (unit, ct)
-                if key not in seen_unit_ct:
-                    seen_unit_ct.add(key)
+                # Loại giao dịch (rowspan = số sub-rows trong (unit, km, ct))
+                ct_key = (unit, km, ct)
+                if ct_key not in seen_unit_km_ct:
+                    seen_unit_km_ct.add(ct_key)
                     cells.append(
-                        f'<td rowspan="{ct_counts[key]}" class="ct-cell">{ct}</td>'
+                        f'<td rowspan="{ct_counts[ct_key]}" class="ct-cell">{ct}</td>'
                     )
                 # Extra cells (plain, no rowspan — repeat for each sub-row)
                 for ev in r["extras"]:
@@ -350,6 +397,9 @@ def render(
     .pivot-tbl td.unit-cell { background: #fdecea; font-weight: 700;
                               text-align: center; vertical-align: middle;
                               font-size: 13px; }
+    .pivot-tbl td.km-cell { background: #eef5fb; font-weight: 700;
+                            text-align: center; vertical-align: middle;
+                            font-size: 12px; color: #2c3e50; }
     .pivot-tbl td.ct-cell { text-align: left; font-weight: 600; }
     .pivot-tbl td.dt-cell { text-align: left; padding-left: 14px; color: #555;
                             font-size: 11px; }
