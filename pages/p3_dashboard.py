@@ -17,7 +17,6 @@ from utils.p3_cumul import render as render_cumul
 from utils.p3_heatmap import render as render_heatmap
 from utils.p3_pivot import render as render_pivot
 from utils.p3_sankey import render as render_sankey
-from utils.p3_sankey_echarts import render as render_sankey_ec
 from utils.p3_total import render as render_total
 
 st.header("Dashboard chiến lược")
@@ -42,11 +41,10 @@ ordered_labels, label_to_unit = build_unit_label_list(
 )
 
 (
-    tab_sankey, tab_sankey_ec, tab_heatmap, tab_pivot,
+    tab_sankey, tab_heatmap, tab_pivot,
     tab_bar, tab_total, tab_cumul,
 ) = st.tabs([
-    "Sankey (Plotly)",
-    "Sankey (ECharts)",
+    "Sankey",
     "Heatmap Dòng tiền từng CT",
     "Bảng pivot",
     "Biểu đồ phân rã dòng tiền",
@@ -56,13 +54,6 @@ ordered_labels, label_to_unit = build_unit_label_list(
 
 with tab_sankey:
     render_sankey(
-        df_report=df_report, nam_list=nam_list, quy_list=quy_list,
-        nhom=nhom, unit_group=unit_group,
-        ordered_labels=ordered_labels, label_to_unit=label_to_unit,
-    )
-
-with tab_sankey_ec:
-    render_sankey_ec(
         df_report=df_report, nam_list=nam_list, quy_list=quy_list,
         nhom=nhom, unit_group=unit_group,
         ordered_labels=ordered_labels, label_to_unit=label_to_unit,

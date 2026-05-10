@@ -165,6 +165,39 @@ Update this file at the end of every AI session.
 - [x] P3 "Biểu đồ phân rã dòng tiền": subplot frame qua `mirror=True` axis lines + giảm `horizontal_spacing` 0.08→0.03 + `vertical_spacing` 0.18→0.12 → 3 panels sát nhau hơn, có viền rõ
 - [x] P3 Bar: subplot titles to hơn (`16px` × font_scale, `family="Arial Black"`) + `yshift=14` đẩy lên cao hơn — top margin bump 80→90
 
+## Phase 7 — P6 Mô phỏng dòng tiền (manual sensitivity, 2026-05-11)
+
+- [x] New `utils/qtrr_sim/` package (`__init__.py`, `factors.py`, `manual.py`)
+- [x] `factors.derive_driver_universe(df_kd_scoped)` → DataFrame `(driver, n_subs, n_lines, default_mode, mode, elasticity, include)`. Default `mode = "Common" if n_subs >= 2 else "Separate"`
+- [x] `manual.compute_shocked_cf(...)` engine — left-join report ↔ key_drivers on (ma_don_vi, chi_tieu); supports Common (single δ) and Separate (per-sub δ) drivers with per-driver elasticity and include flag
+- [x] `manual.aggregate_per_period`, `cumulative_cash`, `decomposition_table` (per-driver Δ contribution, sorted by |Δ| desc)
+- [x] `pages/p6_simulation.py` orchestrator — single page, 5-step UX (Phạm vi → Phân loại Driver → Sliders → Kết quả → Audit)
+- [x] Comparison Pivot table (HTML rowspan, mirrors p3_pivot.py): segmented "Hiển thị" mode (Δ / Gốc / Shock / Cả ba), "Hiển thị Chỉ tiêu" multiselect, Triệu/Tỷ toggle, per-unit Net + TỔNG CỘNG row
+- [x] Period bar chart (Gốc vs Shocked grouped) + Cumulative cash line chart (with optional sàn tiền hline)
+- [x] Driver editor (`st.data_editor`) keyed by hash of driver list — group change cleanly resets stale state; warns when slider count > 30
+- [x] Smoke test (synthetic fixtures): zero-shock invariant, common +10%, separate per-sub, decomposition sums to total Δ
+- [x] Wire `app.py` nav (P6 = Mô phỏng, icon 🎚️)
+- [x] Update `doc/REPO.md` (P6 section + layout + What Is NOT Yet Built)
+
+### Phase 7 — Pending (V1.1 deferred)
+- [ ] P6 Tab 2 — Monte Carlo engine per qtrr-sim V1 spec (triangular drivers, Iman-Conover correlation, fan chart, tornado, deterministic scenarios). Will reuse the same driver universe + elasticity editor from manual mode
+
+## Phase 8 — Cleanup + P6 polish (2026-05-11)
+
+- [x] **Drop P3 Sankey (ECharts) tab** — A/B test concluded, keeping Plotly. Removed `utils/p3_sankey_echarts.py`; updated `pages/p3_dashboard.py` (6 tabs → 5 + Tích lũy placeholder); doc sync (REPO.md tab numbering)
+- [x] P6 UX refactor — chart-first layout: driver editor + CF/Drivers reference moved into "🛠️ Cài đặt nâng cao" expander (collapsed); pivot moved into "📊 Xem bảng số liệu" expander; decomposition moved into "📋 Phân rã đóng góp Driver" expander; Period bar + Cumulative line side-by-side
+- [x] P6 Cash floor breach alert — banner above CFO/CFI/CFF section (✅ green or ⚠️ red with first-breach period); red-marker overlay on cumulative chart at every breaching period; supports negative floor
+- [x] P6 Reset button — 🔄 Reset paired with Step 3 subheader, zeros all `p6_d__*` session_state keys + `st.rerun()`
+
+## Phase 9 — P6 result-first refactor (2026-05-11)
+
+- [x] **T0** — Decomposition table: thêm dòng "Σ Tổng" (nền đậm, chữ trắng) + cải thiện data bar (đỏ/xanh tăng saturation, `align="zero"`, vmin/vmax từ driver rows only)
+- [x] **T1** — Đảo layout: dùng `st.container()` placeholder cho results_slot ở đầu; KPI/charts/pivot/decomp/detail render INSIDE results_slot; driver controls expander đóng mặc định + render visually ở cuối trang. Engine vẫn chạy trước render, period_mode pre-read từ session_state
+- [x] **T2** — Thống nhất UX slider: bỏ cột `shock_pct` khỏi `st.data_editor`; bỏ logic bidirectional sync slider ↔ editor (slider là single source of truth); bỏ checkbox "Hiện cột nâng cao" (luôn hiện mode/elasticity/lag/include); Reset button chỉ clear sliders, không touch mode/ε/lag config
+- [x] **T3** — `Phạm vi mô phỏng & Số dư đầu kỳ` collapse vào expander mặc định; label expander gồm preview `{n_units} đơn vị · Cash₀ = ...` để xem state mà không cần mở
+- [x] **T4** — Scenario Summary banner: helper `_render_scenario_summary()` auto-gen 1 dòng "🔥 Driver +X% · …" khi có shock; banner xám info "💡 Chưa áp dụng shock…" khi tất cả slider = 0; ngầm bao gồm cả non-default ε/lag overrides
+- [x] **T5** — Bỏ hoàn toàn `chart_height_slider()` calls (KM/Period/Cumulative/Pivot); hardcode 380/420/420/480; remove import từ `utils.ui`
+
 ---
 
 ## Pending

@@ -42,6 +42,7 @@ pages = [
     st.Page("pages/p3_dashboard.py", title="Dashboard chiến lược", icon="📊"),
     st.Page("pages/p4_detail.py", title="Chi tiết CTTV", icon="🏢"),
     st.Page("pages/p5_adl.py", title="Ma trận ADL", icon="🎯"),
+    st.Page("pages/p6_simulation.py", title="Mô phỏng", icon="🎚️"),
 ]
 
 pg = st.navigation(pages)
