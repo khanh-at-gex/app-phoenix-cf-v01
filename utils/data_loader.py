@@ -88,7 +88,8 @@ async def _fetch_all():
     )
     df_xlsx["folder_path"] = df_xlsx["file_path"].str.rsplit("/", n=1).str[0]
     df_list_files = df_folders.merge(df_xlsx, on="folder_path", how="left")
-
+    df_list_files = df_list_files[~df_list_files["folder_name"].str.startswith("00")]
+    
     paths = df_list_files[df_list_files["file_path"].notna()]["file_path"].tolist()
 
     async def _read_file(path: str) -> dict:
