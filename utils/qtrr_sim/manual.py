@@ -96,16 +96,23 @@ def _period_sort_key(p: str) -> tuple[int, int]:
 
 
 def compute_shocked_cf(
-    df_report_scoped: pd.DataFrame,
+    df_report: pd.DataFrame,
     df_kd_scoped: pd.DataFrame,
     driver_specs: pd.DataFrame,
     driver_deltas: dict[tuple[str, str | None], float],
-) -> pd.DataFrame:
+    *,
+    sel_units: list[str],
+    nam_sel: list[int],
+    quy_sel: list[int],
+) -> tuple[pd.DataFrame, float, pd.DataFrame]:
     """Apply driver % shocks + per-driver time lag, line-by-line.
 
-    For each row in df_report_scoped (already filtered to selected sub × period
-    × CFO/CFI/CFF), find the drivers linked via df_kd_scoped on
-    (ma_don_vi, chi_tieu) and combine elasticity * delta:
+    Lag is applied BEFORE the period scope filter so that flows landing inside
+    the user-selected scope (from prior/posterior periods in df_report) are
+    captured, and flows pushed out of scope are dropped naturally instead of
+    being silently zero-filled at the scope boundary.
+
+    Mode semantics:
       - include=True + Common: shared delta keyed by (driver, None)
       - include=True + Separate: per-sub delta keyed by (driver, sub)
       - include=False: per-sub delta (override) keyed by (driver, sub)
@@ -114,14 +121,29 @@ def compute_shocked_cf(
     affected line by N periods before applying the % shock. Positive lag =
     delay (flow appears later); negative = accelerate. If a line is linked
     to multiple drivers, the FIRST driver in the kd iteration wins for lag.
+
+    Returns:
+      shocked_df: rows whose period falls within nam_sel × quy_sel.
+      lag_spillover: net baseline that crossed the scope boundary due to lag,
+        in triệu VNĐ. Positive = more cash pushed out of scope than pulled in
+        (scope undershoots true baseline).
+      shocked_extended_df: in-scope rows + out-of-scope rows that received
+        from-scope flows via lag (baseline zeroed for out-of-scope rows).
+        Used by the "Mở rộng cho lag" view toggle so users can see where
+        lag-shifted cash actually lands.
     """
     cols_out = [
         "ma_don_vi", "chi_tieu", "khoan_muc", "nam", "quy",
         "baseline", "shock_factor", "lag", "lagged_baseline", "shocked", "delta",
     ]
-    base = df_report_scoped[df_report_scoped["khoan_muc"].isin(_KM_FILTER)].copy()
+    sel_units_s = {str(u) for u in sel_units}
+    base = df_report[
+        df_report["ma_don_vi"].astype(str).isin(sel_units_s)
+        & df_report["khoan_muc"].isin(_KM_FILTER)
+    ].copy()
     if base.empty:
-        return pd.DataFrame(columns=cols_out)
+        empty = pd.DataFrame(columns=cols_out)
+        return empty, 0.0, empty.copy()
     base["baseline"] = base["so_tien_tong"].astype(float)
 
     shock_lookup: dict[tuple[str, str], float] = {}
@@ -162,7 +184,45 @@ def compute_shocked_cf(
     base["shock_factor"] = keys_s.map(shock_lookup).fillna(0.0)
     base["lag"] = keys_s.map(lag_lookup).fillna(0).astype(int)
 
+    # Pad synthetic zero-baseline rows for periods that lag would shift flows
+    # INTO, but which don't exist in df_report yet. Without this, the lag shift
+    # has no destination row in the dataframe and the cash simply disappears.
+    padding_rows: list[dict] = []
+    for (sub, ct), grp in base.groupby(["ma_don_vi", "chi_tieu"]):
+        lag_val = int(grp["lag"].iloc[0])
+        if lag_val == 0:
+            continue
+        abs_q = (grp["nam"].astype(int) * 4 + (grp["quy"].astype(int) - 1)).tolist()
+        existing = set(int(q) for q in abs_q)
+        if lag_val > 0:
+            pad_range = range(max(existing) + 1, max(existing) + 1 + lag_val)
+        else:
+            pad_range = range(min(existing) + lag_val, min(existing))
+        sample = grp.iloc[0]
+        for q in pad_range:
+            if q in existing:
+                continue
+            pad_nam, mod = divmod(q, 4)
+            padding_rows.append({
+                "ma_don_vi": sub,
+                "chi_tieu": ct,
+                "khoan_muc": sample["khoan_muc"],
+                "nam": int(pad_nam),
+                "quy": int(mod + 1),
+                "baseline": 0.0,
+                "shock_factor": float(sample["shock_factor"]),
+                "lag": lag_val,
+            })
+    if padding_rows:
+        pad_df = pd.DataFrame(padding_rows)
+        for col in base.columns:
+            if col not in pad_df.columns:
+                pad_df[col] = 0.0 if base[col].dtype.kind in "fi" else None
+        base = pd.concat([base, pad_df[base.columns]], ignore_index=True)
+
     # Apply lag: shift baseline within each (sub, ct) group along time axis.
+    # Sort across full period range (not just scope) so shifts cross the scope
+    # boundary correctly.
     base = base.sort_values(["ma_don_vi", "chi_tieu", "nam", "quy"]).reset_index(drop=True)
 
     def _shift_baseline(s: pd.Series) -> pd.Series:
@@ -177,7 +237,45 @@ def compute_shocked_cf(
 
     base["shocked"] = base["lagged_baseline"] * (1.0 + base["shock_factor"])
     base["delta"] = base["shocked"] - base["baseline"]
-    return base[cols_out]
+
+    # Filter to user-selected period scope AFTER lag shift.
+    in_scope = base["nam"].isin(nam_sel) & base["quy"].isin(quy_sel)
+
+    # Extended view: include rows OUTSIDE original scope whose lagged_baseline
+    # was sourced from a row INSIDE original scope (i.e., flows that lag pushed
+    # past the scope boundary land here). Source period = (nam, quy) shifted
+    # backwards by the row's lag in absolute-quarter space.
+    abs_q = base["nam"].astype(int) * 4 + (base["quy"].astype(int) - 1)
+    source_abs_q = abs_q - base["lag"].astype(int)
+    source_nam = source_abs_q // 4
+    source_quy = (source_abs_q % 4) + 1
+    from_scope = source_nam.isin(nam_sel) & source_quy.isin(quy_sel)
+    extended_mask = in_scope | from_scope
+
+    base_in_scope = base.loc[in_scope]
+
+    # Spillover: Σ original baseline in scope − Σ lagged baseline in scope.
+    # > 0 means lag pushed more out of scope than it pulled in.
+    spillover = float(
+        base_in_scope["baseline"].sum() - base_in_scope["lagged_baseline"].sum()
+    )
+
+    # Build extended frame: in-scope rows as-is + rows outside scope that
+    # received from-scope flows (baseline zeroed so only the lag inflow shows).
+    base_extended = base.loc[extended_mask].copy()
+    out_of_scope_mask = ~(
+        base_extended["nam"].isin(nam_sel) & base_extended["quy"].isin(quy_sel)
+    )
+    base_extended.loc[out_of_scope_mask, "baseline"] = 0.0
+    base_extended.loc[out_of_scope_mask, "delta"] = (
+        base_extended.loc[out_of_scope_mask, "shocked"]
+    )
+
+    return (
+        base_in_scope[cols_out].reset_index(drop=True),
+        spillover,
+        base_extended[cols_out].reset_index(drop=True),
+    )
 
 
 def aggregate_per_period(
@@ -226,28 +324,47 @@ def cumulative_cash(per_period: pd.DataFrame, cash_0: float) -> pd.DataFrame:
 
 
 def decomposition_table(
-    df_report_scoped: pd.DataFrame,
+    shocked: pd.DataFrame,
     df_kd_scoped: pd.DataFrame,
     driver_specs: pd.DataFrame,
     driver_deltas: dict[tuple[str, str | None], float],
 ) -> pd.DataFrame:
-    """Per-driver Δ contribution: Σ (baseline_line × elasticity × applicable_delta)."""
+    """Per-driver Δ decomposition with separate shock and lag columns.
+
+    - contribution      = Σ (lagged_baseline_line × ε × δ) — shock applied on
+                          post-lag basis (matches engine behavior).
+    - lag_contribution  = Σ (lagged_baseline − baseline) for (sub, ct) where
+                          this driver is the lag-owner (first kd row wins,
+                          matching engine's `lag_lookup` construction).
+
+    Identity: ΔTotal CF = Σ contribution + Σ lag_contribution. The table
+    therefore reconciles exactly with KPI Δ Tổng CF, with lag impact
+    attributed to the driver that owns each (sub, ct).
+    """
     cols = [
         "driver", "mode", "delta_pct_avg", "lag", "elasticity",
-        "baseline_sum", "contribution", "pct_of_total",
+        "baseline_sum", "contribution", "lag_contribution", "pct_of_total",
     ]
     if driver_specs.empty:
         return pd.DataFrame(columns=cols)
 
-    base = df_report_scoped[df_report_scoped["khoan_muc"].isin(_KM_FILTER)].copy()
-    base["baseline"] = base["so_tien_tong"].astype(float)
-    base_sum = (
-        base.groupby(["ma_don_vi", "chi_tieu"], as_index=False)["baseline"].sum()
-    )
-    bk: dict[tuple[str, str], float] = {
-        (str(r["ma_don_vi"]), str(r["chi_tieu"])): float(r["baseline"])
-        for _, r in base_sum.iterrows()
-    }
+    if shocked.empty:
+        bk: dict[tuple[str, str], float] = {}
+        lbk: dict[tuple[str, str], float] = {}
+        total_cf_baseline = 0.0
+    else:
+        grp = shocked.groupby(
+            ["ma_don_vi", "chi_tieu"], as_index=False
+        )[["baseline", "lagged_baseline"]].sum()
+        bk = {
+            (str(r["ma_don_vi"]), str(r["chi_tieu"])): float(r["baseline"])
+            for _, r in grp.iterrows()
+        }
+        lbk = {
+            (str(r["ma_don_vi"]), str(r["chi_tieu"])): float(r["lagged_baseline"])
+            for _, r in grp.iterrows()
+        }
+        total_cf_baseline = float(shocked["baseline"].sum())
 
     if df_kd_scoped.empty:
         kd = pd.DataFrame(columns=["ma_don_vi", "chi_tieu", "key_drivers"])
@@ -255,6 +372,13 @@ def decomposition_table(
         kd = df_kd_scoped[df_kd_scoped["key_drivers"].notna()].copy()
         kd["key_drivers"] = kd["key_drivers"].astype(str).str.strip()
         kd = kd[(kd["key_drivers"] != "") & kd["ma_don_vi"].notna()]
+
+    # lag_owner: first driver linked to each (sub, ct) — mirrors engine's lag_lookup.
+    lag_owner: dict[tuple[str, str], str] = {}
+    for _, lr in kd.iterrows():
+        key = (str(lr["ma_don_vi"]), str(lr["chi_tieu"]))
+        if key not in lag_owner:
+            lag_owner[key] = str(lr["key_drivers"])
 
     rows = []
     for _, spec in driver_specs.iterrows():
@@ -269,18 +393,23 @@ def decomposition_table(
         linked = kd[kd["key_drivers"] == drv]
         baseline_sum = 0.0
         contribution = 0.0
+        lag_contribution = 0.0
         deltas_used = []
         for _, lr in linked.iterrows():
             sub = str(lr["ma_don_vi"])
             ct = str(lr["chi_tieu"])
-            row_baseline = bk.get((sub, ct), 0.0)
+            key = (sub, ct)
+            row_baseline = bk.get(key, 0.0)
+            row_lagged = lbk.get(key, 0.0)
             baseline_sum += row_baseline
             if use_mapping and mode == "Common":
                 delta = float(driver_deltas.get((drv, None), 0.0))
             else:
                 delta = float(driver_deltas.get((drv, sub), 0.0))
             deltas_used.append(delta)
-            contribution += row_baseline * elast * delta
+            contribution += row_lagged * elast * delta
+            if lag_owner.get(key) == drv:
+                lag_contribution += row_lagged - row_baseline
         delta_avg = (sum(deltas_used) / len(deltas_used)) if deltas_used else 0.0
         rows.append({
             "driver": drv,
@@ -290,17 +419,19 @@ def decomposition_table(
             "elasticity": elast,
             "baseline_sum": baseline_sum,
             "contribution": contribution,
+            "lag_contribution": lag_contribution,
         })
     out = pd.DataFrame(rows)
     if out.empty:
         return pd.DataFrame(columns=cols)
 
+    out["_total_row"] = out["contribution"] + out["lag_contribution"]
     out = (
-        out.sort_values("contribution", key=lambda s: s.abs(), ascending=False)
+        out.sort_values("_total_row", key=lambda s: s.abs(), ascending=False)
+        .drop(columns="_total_row")
         .reset_index(drop=True)
     )
 
-    total_cf_baseline = float(base["baseline"].sum())
     driver_baseline_sum = float(out["baseline_sum"].sum())
     other_baseline = total_cf_baseline - driver_baseline_sum
 
@@ -312,13 +443,19 @@ def decomposition_table(
         "elasticity": pd.NA,
         "baseline_sum": other_baseline,
         "contribution": 0.0,
+        "lag_contribution": 0.0,
     }])
     out = pd.concat([out, other_row], ignore_index=True)
 
-    total = float(out["contribution"].sum())
-    out["pct_of_total"] = (
-        (out["contribution"] / total * 100.0) if total != 0 else 0.0
+    total_delta = float(
+        out["contribution"].sum() + out["lag_contribution"].sum()
     )
+    if total_delta != 0:
+        out["pct_of_total"] = (
+            (out["contribution"] + out["lag_contribution"]) / total_delta * 100.0
+        )
+    else:
+        out["pct_of_total"] = 0.0
     return out[cols]
 
 
@@ -613,8 +750,9 @@ def render(
     # ── End of driver controls expander ────────────────────────────────────
 
     # ── Engine ─────────────────────────────────────────────────────────────
-    shocked = compute_shocked_cf(
-        df_report_scoped, df_kd_scoped, edited, driver_deltas
+    shocked, lag_spillover, shocked_extended = compute_shocked_cf(
+        df_report, df_kd_scoped, edited, driver_deltas,
+        sel_units=sel_units, nam_sel=nam_sel, quy_sel=quy_sel,
     )
     if shocked.empty:
         st.info("Không có dữ liệu sau khi áp dụng bộ lọc.")
@@ -622,14 +760,30 @@ def render(
 
     period_mode = st.session_state.get("p6_period_mode", "Quý") or "Quý"
 
-    per_period = aggregate_per_period(shocked, period_mode)
+    has_lag = (
+        not edited.empty
+        and pd.to_numeric(edited.get("lag", 0), errors="coerce").fillna(0).abs().sum() > 0
+    )
+    view_mode = st.session_state.get("p6_period_scope", "Theo scope") or "Theo scope"
+    if not has_lag:
+        view_mode = "Theo scope"
+    shocked_view = shocked_extended if view_mode == "Mở rộng cho lag" else shocked
+
+    per_period = aggregate_per_period(shocked_view, period_mode)
     cum = cumulative_cash(per_period, cash_0)
-    per_period_km = aggregate_per_period_per_km(shocked, period_mode)
+    per_period_km = aggregate_per_period_per_km(shocked_view, period_mode)
 
     # ── Render results (visually BELOW driver controls) ────────────────────
-    _render_scenario_summary(driver_deltas, edited)
+    _render_scenario_summary(
+        driver_deltas, edited,
+        lag_spillover=(lag_spillover if view_mode == "Theo scope" else 0.0),
+    )
 
-    hr1, hr2 = st.columns([6, 2])
+    if has_lag:
+        hr1, hr2, hr3 = st.columns([4, 2, 2])
+    else:
+        hr1, hr2 = st.columns([6, 2])
+        hr3 = None
     with hr1:
         st.subheader("4️⃣ Kết quả")
     with hr2:
@@ -637,6 +791,12 @@ def render(
             "Hiển thị theo", ["Năm", "Quý"], default="Quý",
             key="p6_period_mode",
         )
+    if hr3 is not None:
+        with hr3:
+            st.segmented_control(
+                "Phạm vi hiển thị", ["Theo scope", "Mở rộng cho lag"],
+                default="Theo scope", key="p6_period_scope",
+            )
 
     _render_compact_kpi_strip(per_period, cum, cash_0, per_period_km)
 
@@ -661,16 +821,16 @@ def render(
         _render_cumulative_chart(cum, floor)
 
     with st.expander("📊 Xem bảng số liệu (Trước / Sau / Δ)", expanded=False):
-        _render_comparison_pivot(shocked, period_mode)
+        _render_comparison_pivot(shocked_view, period_mode)
 
     with st.expander("📋 Phân rã đóng góp Driver", expanded=False):
         deco = decomposition_table(
-            df_report_scoped, df_kd_scoped, edited, driver_deltas
+            shocked, df_kd_scoped, edited, driver_deltas,
         )
         _render_decomposition(deco)
 
     with st.expander("🔍 Xem chi tiết per đơn vị / chi tiêu", expanded=False):
-        detail = shocked.copy()
+        detail = shocked_view.copy()
         detail["period"] = [
             _period_str(n, q, period_mode)
             for n, q in zip(detail["nam"], detail["quy"])
@@ -814,13 +974,29 @@ def _render_kpi_row(
 def _render_scenario_summary(
     driver_deltas: dict[tuple[str, str | None], float],
     driver_specs: pd.DataFrame,
+    *,
+    lag_spillover: float = 0.0,
 ) -> None:
     """One-line banner summarizing active shocks + non-default ε/lag overrides.
 
     Renders an info banner when no shocks are applied (helps first-time users
     locate the driver controls) and a warning-tinted banner when shocks are
     active — terms are joined with ' · ' so the line stays scannable.
+
+    If `lag_spillover` is materially non-zero (|·| > 1 triệu VNĐ), renders an
+    additional red-tinted banner showing how much baseline crossed the scope
+    boundary due to lag (positive = pushed out, negative = pulled in).
     """
+    if abs(lag_spillover) > 1.0:
+        sign_label = "đẩy ra" if lag_spillover > 0 else "kéo vào"
+        st.markdown(
+            f"<div style='background:#fdecea;border-left:4px solid #c0392b;"
+            f"padding:8px 12px;border-radius:4px;font-size:13px;color:#922b21;"
+            f"margin-bottom:8px'>⚠️ Lag {sign_label} <b>"
+            f"{abs(lag_spillover)/1000:.1f} tỷ</b> qua ranh giới scope "
+            f"(chênh baseline trước/sau lag)</div>",
+            unsafe_allow_html=True,
+        )
     parts: list[str] = []
     for (drv, sub), delta in driver_deltas.items():
         if abs(delta) < 1e-6:
@@ -1450,15 +1626,17 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
         st.caption("Không có driver nào đang áp dụng.")
         return
     st.caption(
-        "ℹ️ Bảng này chỉ phân rã đóng góp từ **% slider**. "
-        "Hiệu ứng **lag** (dịch dòng tiền) đã tính trong KPI Δ Tổng CF "
-        "nhưng không tách riêng theo driver ở đây."
+        "ℹ️ **Σ baseline** = baseline gốc trong scope theo driver mapping. "
+        "**Đóng góp Δ (shock)** = baseline SAU lag × ε × δ. "
+        "**Lag (dịch dòng tiền)** = phần baseline bị đẩy ra/kéo vào do lag (per driver, "
+        "theo lag-owner). Σ Tổng (shock + lag) = KPI Δ Tổng CF chính xác."
     )
 
     # Display values in TỶ (÷ 1,000) so the numbers fit and read cleanly.
     deco_disp = deco.copy()
     deco_disp["baseline_sum"] = deco_disp["baseline_sum"] / 1000.0
     deco_disp["contribution"] = deco_disp["contribution"] / 1000.0
+    deco_disp["lag_contribution"] = deco_disp["lag_contribution"] / 1000.0
     deco_disp = deco_disp.rename(columns={
         "driver": "Driver",
         "mode": "Loại",
@@ -1467,9 +1645,11 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
         "elasticity": "Elasticity",
         "baseline_sum": "Σ baseline (tỷ)",
         "contribution": "Đóng góp Δ (tỷ)",
+        "lag_contribution": "Dòng tiền bị đẩy lùi lịch (tỷ)",
         "pct_of_total": "% tổng Δ",
     })
     contrib_col = "Đóng góp Δ (tỷ)"
+    lag_contrib_col = "Dòng tiền bị đẩy lùi lịch (tỷ)"
     baseline_col = "Σ baseline (tỷ)"
     pct_col = "% tổng Δ"
     pct_slider_col = "Δ slider (%)"
@@ -1483,6 +1663,7 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
         "Elasticity": pd.NA,
         baseline_col: float(deco_disp[baseline_col].sum()),
         contrib_col: float(deco_disp[contrib_col].sum()),
+        lag_contrib_col: float(deco_disp[lag_contrib_col].sum()),
         pct_col: 100.0,
     }])
     deco_disp = pd.concat([deco_disp, total_row], ignore_index=True)
@@ -1544,10 +1725,11 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
             "Elasticity": _fmt_elast,
             baseline_col: _fmt_money_signed,
             contrib_col: _fmt_money_signed,
+            lag_contrib_col: _fmt_money_signed,
             pct_col: _fmt_pct_signed,
         })
         .map(_sign_color,
-             subset=pd.IndexSlice[drv_idx, [contrib_col, pct_col, baseline_col, pct_slider_col]])
+             subset=pd.IndexSlice[drv_idx, [contrib_col, lag_contrib_col, pct_col, baseline_col, pct_slider_col]])
         .map(_mode_color, subset=pd.IndexSlice[drv_idx, ["Loại"]])
     )
 
@@ -1559,6 +1741,14 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
             align="zero",
             color=["#f1948a", "#7dcea0"],
             vmin=-max_abs, vmax=max_abs,
+        )
+    max_lag_abs = float(deco_disp.loc[drv_idx, lag_contrib_col].abs().max() or 1.0)
+    if max_lag_abs > 0:
+        styled = styled.bar(
+            subset=pd.IndexSlice[drv_idx, lag_contrib_col],
+            align="zero",
+            color=["#f1948a", "#7dcea0"],
+            vmin=-max_lag_abs, vmax=max_lag_abs,
         )
 
     # Total row style applied LAST so its dark background overrides per-cell colors above.
