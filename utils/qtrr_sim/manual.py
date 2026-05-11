@@ -294,14 +294,32 @@ def decomposition_table(
     out = pd.DataFrame(rows)
     if out.empty:
         return pd.DataFrame(columns=cols)
+
+    out = (
+        out.sort_values("contribution", key=lambda s: s.abs(), ascending=False)
+        .reset_index(drop=True)
+    )
+
+    total_cf_baseline = float(base["baseline"].sum())
+    driver_baseline_sum = float(out["baseline_sum"].sum())
+    other_baseline = total_cf_baseline - driver_baseline_sum
+
+    other_row = pd.DataFrame([{
+        "driver": "Khác (không có driver)",
+        "mode": "",
+        "delta_pct_avg": pd.NA,
+        "lag": pd.NA,
+        "elasticity": pd.NA,
+        "baseline_sum": other_baseline,
+        "contribution": 0.0,
+    }])
+    out = pd.concat([out, other_row], ignore_index=True)
+
     total = float(out["contribution"].sum())
     out["pct_of_total"] = (
         (out["contribution"] / total * 100.0) if total != 0 else 0.0
     )
-    return (
-        out.sort_values("contribution", key=lambda s: s.abs(), ascending=False)
-        .reset_index(drop=True)[cols]
-    )
+    return out[cols]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

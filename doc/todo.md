@@ -198,6 +198,10 @@ Update this file at the end of every AI session.
 - [x] **T4** — Scenario Summary banner: helper `_render_scenario_summary()` auto-gen 1 dòng "🔥 Driver +X% · …" khi có shock; banner xám info "💡 Chưa áp dụng shock…" khi tất cả slider = 0; ngầm bao gồm cả non-default ε/lag overrides
 - [x] **T5** — Bỏ hoàn toàn `chart_height_slider()` calls (KM/Period/Cumulative/Pivot); hardcode 380/420/420/480; remove import từ `utils.ui`
 
+## Phase 10 — P3 Heatmap row order fix (2026-05-11)
+
+- [x] P3 Heatmap: row order theo thứ tự user chọn trong filter Đơn vị (sel_units), không tự sort folder order. Fallback về folder order khi filter rỗng. ([utils/p3_heatmap.py](../utils/p3_heatmap.py))
+
 ---
 
 ## Pending

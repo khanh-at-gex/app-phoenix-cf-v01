@@ -23,7 +23,23 @@ def render(
     # ── Filter row ──────────────────────────────────────────────────────────
     fc1, fc2, fc3, fc4, fc5, fc6 = st.columns([3, 2, 2, 2, 2, 3])
     with fc1:
-        sel_labels = st.multiselect("Đơn vị", ordered_labels, key="p3_hm_units")
+        if "p3_hm_order" not in st.session_state:
+            st.session_state.p3_hm_order = []
+
+        def _on_units_change():
+            current = st.session_state.p3_hm_units
+            prev = st.session_state.p3_hm_order
+            new_order = [x for x in prev if x in current]
+            for x in current:
+                if x not in new_order:
+                    new_order.append(x)
+            st.session_state.p3_hm_order = new_order
+
+        st.multiselect(
+            "Đơn vị", ordered_labels,
+            key="p3_hm_units", on_change=_on_units_change,
+        )
+        sel_labels = st.session_state.p3_hm_order
         sel_units = [label_to_unit[lb] for lb in sel_labels]
     with fc2:
         hm_period = st.segmented_control(
@@ -98,13 +114,16 @@ def render(
     else:
         sorted_periods = sorted(pivot.columns.tolist(), key=lambda p: int(p))
 
-    # Folder-ordered rows
-    folder_ordered = [
-        label_to_unit[lb] for lb in ordered_labels
-        if label_to_unit[lb] in pivot.index
-    ]
-    remaining = [u for u in pivot.index if u not in folder_ordered]
-    pivot = pivot.loc[folder_ordered + remaining][sorted_periods]
+    # Row order: theo thứ tự user chọn trong filter; nếu rỗng, theo folder order
+    if sel_units:
+        row_order = [u for u in sel_units if u in pivot.index]
+    else:
+        row_order = [
+            label_to_unit[lb] for lb in ordered_labels
+            if label_to_unit[lb] in pivot.index
+        ]
+    remaining = [u for u in pivot.index if u not in row_order]
+    pivot = pivot.loc[row_order + remaining][sorted_periods]
 
     units = pivot.index.tolist()
     periods = pivot.columns.tolist()
