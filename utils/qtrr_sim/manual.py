@@ -758,7 +758,7 @@ def render(
         st.info("Không có dữ liệu sau khi áp dụng bộ lọc.")
         return
 
-    period_mode = st.session_state.get("p6_period_mode", "Quý") or "Quý"
+    period_mode = st.session_state.get("p6_period_mode", "Năm") or "Năm"
 
     has_lag = (
         not edited.empty
@@ -785,10 +785,10 @@ def render(
         hr1, hr2 = st.columns([6, 2])
         hr3 = None
     with hr1:
-        st.subheader("4️⃣ Kết quả")
+        st.subheader("Kết quả")
     with hr2:
         st.segmented_control(
-            "Hiển thị theo", ["Năm", "Quý"], default="Quý",
+            "Hiển thị theo", ["Năm", "Quý"], default="Năm",
             key="p6_period_mode",
         )
     if hr3 is not None:
@@ -1637,6 +1637,7 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
     deco_disp["baseline_sum"] = deco_disp["baseline_sum"] / 1000.0
     deco_disp["contribution"] = deco_disp["contribution"] / 1000.0
     deco_disp["lag_contribution"] = deco_disp["lag_contribution"] / 1000.0
+    deco_disp["total_impact"] = deco_disp["contribution"] + deco_disp["lag_contribution"]
     deco_disp = deco_disp.rename(columns={
         "driver": "Driver",
         "mode": "Loại",
@@ -1645,11 +1646,13 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
         "elasticity": "Elasticity",
         "baseline_sum": "Σ baseline (tỷ)",
         "contribution": "Đóng góp Δ (tỷ)",
-        "lag_contribution": "Dòng tiền bị đẩy lùi lịch (tỷ)",
+        "lag_contribution": "Dòng tiền bị lag (tỷ)",
+        "total_impact": "Tổng impact (tỷ)",
         "pct_of_total": "% tổng Δ",
     })
     contrib_col = "Đóng góp Δ (tỷ)"
-    lag_contrib_col = "Dòng tiền bị đẩy lùi lịch (tỷ)"
+    lag_contrib_col = "Dòng tiền bị lag (tỷ)"
+    total_impact_col = "Tổng impact (tỷ)"
     baseline_col = "Σ baseline (tỷ)"
     pct_col = "% tổng Δ"
     pct_slider_col = "Δ slider (%)"
@@ -1664,6 +1667,7 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
         baseline_col: float(deco_disp[baseline_col].sum()),
         contrib_col: float(deco_disp[contrib_col].sum()),
         lag_contrib_col: float(deco_disp[lag_contrib_col].sum()),
+        total_impact_col: float(deco_disp[total_impact_col].sum()),
         pct_col: 100.0,
     }])
     deco_disp = pd.concat([deco_disp, total_row], ignore_index=True)
@@ -1726,10 +1730,11 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
             baseline_col: _fmt_money_signed,
             contrib_col: _fmt_money_signed,
             lag_contrib_col: _fmt_money_signed,
+            total_impact_col: _fmt_money_signed,
             pct_col: _fmt_pct_signed,
         })
         .map(_sign_color,
-             subset=pd.IndexSlice[drv_idx, [contrib_col, lag_contrib_col, pct_col, baseline_col, pct_slider_col]])
+             subset=pd.IndexSlice[drv_idx, [contrib_col, lag_contrib_col, total_impact_col, pct_col, baseline_col, pct_slider_col]])
         .map(_mode_color, subset=pd.IndexSlice[drv_idx, ["Loại"]])
     )
 
@@ -1749,6 +1754,14 @@ def _render_decomposition(deco: pd.DataFrame) -> None:
             align="zero",
             color=["#f1948a", "#7dcea0"],
             vmin=-max_lag_abs, vmax=max_lag_abs,
+        )
+    max_total_abs = float(deco_disp.loc[drv_idx, total_impact_col].abs().max() or 1.0)
+    if max_total_abs > 0:
+        styled = styled.bar(
+            subset=pd.IndexSlice[drv_idx, total_impact_col],
+            align="zero",
+            color=["#f1948a", "#7dcea0"],
+            vmin=-max_total_abs, vmax=max_total_abs,
         )
 
     # Total row style applied LAST so its dark background overrides per-cell colors above.
